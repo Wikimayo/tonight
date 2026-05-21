@@ -1,17 +1,9 @@
-# app
+# Tonight
 
-A new Flutter project.
+Proyecto privado intelectual.
 
-## Getting Started
+All rights reserved.
 
-This project is a starting point for a Flutter application.
+Copyright (c) 2025 Wikimayo
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+No esta autorizado copiar, redistribuir o comercializar este proyecto sin permiso previo y por escrito de Wikimayo.
