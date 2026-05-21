@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
+import '../core/constants/app_texts.dart';
 import '../services/analytics_service.dart';
 import '../services/crash_reporting_service.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/local_plan_storage.dart';
+import '../services/notification_service.dart';
 import '../services/onboarding_service.dart';
 import '../services/premium_service.dart';
 import '../services/user_preferences_service.dart';
+import '../utils/tonight_page_route.dart';
 import '../widgets/glass_panel.dart';
 import '../widgets/mood_chip.dart';
+import '../widgets/tonight_app_bar.dart';
 import 'onboarding_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -18,6 +25,11 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: showBackButton
+          ? TonightAppBar(
+              title: AppTexts.of(LanguageService.currentLanguage).settings,
+            )
+          : null,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -33,19 +45,20 @@ class SettingsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (showBackButton) ...[
-                  _BackButton(onPressed: () => Navigator.of(context).pop()),
-                  const SizedBox(height: 26),
-                ] else
-                  const SizedBox(height: 10),
-                Text(
-                  'Ajustes',
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: Colors.white,
-                    fontSize: 40,
-                    fontWeight: FontWeight.w900,
-                    height: 1.02,
-                  ),
+                if (!showBackButton) const SizedBox(height: 10),
+                ValueListenableBuilder<String>(
+                  valueListenable: LanguageService.languageNotifier,
+                  builder: (context, language, child) {
+                    return Text(
+                      AppTexts.of(language).settings,
+                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                        color: Colors.white,
+                        fontSize: 40,
+                        fontWeight: FontWeight.w900,
+                        height: 1.02,
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -63,6 +76,23 @@ class SettingsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const _PreferencesSection(),
+                        const SizedBox(height: 26),
+                        ValueListenableBuilder<String>(
+                          valueListenable: LanguageService.languageNotifier,
+                          builder: (context, language, child) {
+                            final texts = AppTexts.of(language);
+
+                            return Column(
+                              children: [
+                                _LanguageSettingsSection(texts: texts),
+                                const SizedBox(height: 26),
+                                _NotificationSettingsSection(
+                                  title: texts.notifications,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
                         const SizedBox(height: 26),
                         _SettingsSection(
                           title: 'Datos',
@@ -116,8 +146,10 @@ class SettingsScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 26),
-                        const _PremiumDebugSection(),
+                        if (kDebugMode) ...[
+                          const SizedBox(height: 26),
+                          const _PremiumDebugSection(),
+                        ],
                         const SizedBox(height: 26),
                         _SettingsSection(
                           title: 'App',
@@ -129,11 +161,12 @@ class SettingsScreen extends StatelessWidget {
                               label: 'Ver onboarding de nuevo',
                               onPressed: () => _showOnboardingAgain(context),
                             ),
-                            _SettingsAction(
-                              icon: Icons.bug_report_rounded,
-                              label: 'Probar Crashlytics (debug/test)',
-                              onPressed: () => _testCrashlytics(context),
-                            ),
+                            if (kDebugMode)
+                              _SettingsAction(
+                                icon: Icons.bug_report_rounded,
+                                label: 'Probar Crashlytics (debug/test)',
+                                onPressed: () => _testCrashlytics(context),
+                              ),
                           ],
                         ),
                       ],
@@ -156,6 +189,7 @@ class SettingsScreen extends StatelessWidget {
     required Future<bool> Function() hasData,
     required Future<void> Function() action,
   }) async {
+    HapticService.mediumImpact();
     final canDelete = await hasData();
     if (!context.mounted) {
       return;
@@ -191,6 +225,7 @@ class SettingsScreen extends StatelessWidget {
       return;
     }
 
+    HapticService.heavyImpact();
     await action();
     if (!context.mounted) {
       return;
@@ -224,9 +259,9 @@ class SettingsScreen extends StatelessWidget {
       return;
     }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const OnboardingScreen()),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(tonightPageRoute<void>((_) => const OnboardingScreen()));
   }
 
   Future<void> _testCrashlytics(BuildContext context) async {
@@ -481,6 +516,7 @@ class _PremiumDebugSectionState extends State<_PremiumDebugSection> {
   }
 
   Future<void> _setPremiumMock(bool value) async {
+    HapticService.mediumImpact();
     setState(() {
       isPremium = value;
     });
@@ -570,6 +606,266 @@ class _PremiumDebugSectionState extends State<_PremiumDebugSection> {
                     activeThumbColor: const Color(0xFFE8B66B),
                     onChanged: _setPremiumMock,
                   ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _LanguageSettingsSection extends StatefulWidget {
+  const _LanguageSettingsSection({required this.texts});
+
+  final AppTextValues texts;
+
+  @override
+  State<_LanguageSettingsSection> createState() =>
+      _LanguageSettingsSectionState();
+}
+
+class _LanguageSettingsSectionState extends State<_LanguageSettingsSection> {
+  String selectedLanguage = LanguageService.currentLanguage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanguage();
+  }
+
+  Future<void> _loadLanguage() async {
+    final language = await LanguageService.getLanguage();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      selectedLanguage = language;
+    });
+  }
+
+  Future<void> _setLanguage(String languageCode) async {
+    if (languageCode == selectedLanguage) {
+      return;
+    }
+
+    HapticService.selectionClick();
+    await LanguageService.setLanguage(languageCode);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      selectedLanguage = languageCode;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF17131D),
+        content: Text(
+          languageCode == LanguageService.english
+              ? 'Language updated'
+              : 'Idioma actualizado',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsSection(
+      title: widget.texts.language,
+      icon: Icons.language_rounded,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: MoodChip(
+                label: 'Español',
+                isSelected: selectedLanguage == LanguageService.spanish,
+                onTap: () => _setLanguage(LanguageService.spanish),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: MoodChip(
+                label: 'English',
+                isSelected: selectedLanguage == LanguageService.english,
+                onTap: () => _setLanguage(LanguageService.english),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _NotificationSettingsSection extends StatefulWidget {
+  const _NotificationSettingsSection({required this.title});
+
+  final String title;
+
+  @override
+  State<_NotificationSettingsSection> createState() =>
+      _NotificationSettingsSectionState();
+}
+
+class _NotificationSettingsSectionState
+    extends State<_NotificationSettingsSection> {
+  late Future<bool> notificationsFuture;
+  bool isEnabled = false;
+  bool isUpdating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    notificationsFuture = _loadNotificationState();
+  }
+
+  Future<bool> _loadNotificationState() async {
+    final enabled = await NotificationService.isSmartNotificationsEnabled();
+    isEnabled = enabled;
+    return enabled;
+  }
+
+  Future<void> _setNotificationsEnabled(bool value) async {
+    if (isUpdating) {
+      return;
+    }
+
+    HapticService.mediumImpact();
+    setState(() {
+      isEnabled = value;
+      isUpdating = true;
+    });
+
+    if (value) {
+      final scheduled = await NotificationService.scheduleSmartNotifications();
+      if (!mounted) {
+        return;
+      }
+
+      if (scheduled) {
+        await const AnalyticsService().logSmartNotificationsEnabled();
+        _showSnackBar('Notificaciones inteligentes activadas');
+      } else {
+        setState(() {
+          isEnabled = false;
+        });
+        _showSnackBar('No se pudieron activar las notificaciones.');
+      }
+    } else {
+      await NotificationService.cancelSmartNotifications();
+      await const AnalyticsService().logSmartNotificationsDisabled();
+      if (!mounted) {
+        return;
+      }
+
+      _showSnackBar('Notificaciones inteligentes desactivadas');
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      isUpdating = false;
+    });
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF17131D),
+        content: Text(message),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: notificationsFuture,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const GlassPanel(
+            padding: EdgeInsets.all(20),
+            borderRadius: 30,
+            opacity: 0.045,
+            child: Center(
+              child: CircularProgressIndicator(color: Color(0xFFE8B66B)),
+            ),
+          );
+        }
+
+        return _SettingsSection(
+          title: widget.title,
+          icon: Icons.notifications_active_rounded,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.055),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.auto_awesome_motion_rounded,
+                    color: Color(0xFFE8B66B),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Notificaciones inteligentes',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Recordatorios locales para viernes, sábado y domingo.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.58),
+                                fontWeight: FontWeight.w600,
+                                height: 1.25,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  isUpdating
+                      ? const SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Color(0xFFE8B66B),
+                          ),
+                        )
+                      : Switch(
+                          value: isEnabled,
+                          activeThumbColor: const Color(0xFFE8B66B),
+                          onChanged: _setNotificationsEnabled,
+                        ),
                 ],
               ),
             ),
@@ -815,29 +1111,6 @@ class _VersionRow extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BackButton extends StatelessWidget {
-  const _BackButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
-        child: const SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
         ),
       ),
     );

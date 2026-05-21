@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/plan_model.dart';
+import '../utils/text_sanitizer.dart';
 
 class SharePlanCard extends StatelessWidget {
   const SharePlanCard({required this.plan, super.key});
 
   static const Size storySize = Size(390, 693.33);
+  static const String qrUrl = 'https://tonight.app';
 
   final PlanModel plan;
 
   @override
   Widget build(BuildContext context) {
-    final steps = plan.itinerarySteps.take(3).toList();
-
     return SizedBox(
       width: storySize.width,
       height: storySize.height,
@@ -40,16 +41,16 @@ class SharePlanCard extends StatelessWidget {
                 child: _Glow(size: 280, color: Color(0xFF8F4FFF)),
               ),
               Positioned(
-                left: 22,
-                top: 76,
-                bottom: 82,
+                left: 21,
+                top: 72,
+                bottom: 118,
                 child: Container(
                   width: 1,
                   color: Colors.white.withValues(alpha: 0.09),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(30, 30, 30, 28),
+                padding: const EdgeInsets.fromLTRB(26, 22, 26, 22),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -79,98 +80,114 @@ class SharePlanCard extends StatelessWidget {
                             'T',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 26,
+                              fontSize: 27,
                               fontWeight: FontWeight.w900,
                               height: 1,
                               letterSpacing: 0,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 13),
                         const Expanded(
-                          child: Text(
-                            'Tonight',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 23,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Tonight',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w900,
+                                  height: 0.98,
+                                  letterSpacing: 0,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'AI plan finder',
+                                style: TextStyle(
+                                  color: Color(0xFFE8B66B),
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        _MoodBadge(mood: plan.mood),
+                        _MoodBadge(mood: TextSanitizer.clean(plan.mood)),
                       ],
                     ),
-                    const SizedBox(height: 26),
+                    const SizedBox(height: 15),
                     Text(
                       _viralLineFor(plan.mood),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFFE8B66B),
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w900,
                         height: 1.18,
                         letterSpacing: 0,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
-                      plan.title,
-                      maxLines: 3,
+                      TextSanitizer.clean(plan.title),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 39,
+                        fontSize: 31,
                         fontWeight: FontWeight.w900,
                         height: 1.01,
                         letterSpacing: 0,
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 9),
                     Text(
-                      plan.description,
-                      maxLines: 3,
+                      TextSanitizer.clean(plan.description),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.66),
-                        fontSize: 14,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                         height: 1.32,
                         letterSpacing: 0,
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 11),
                     Row(
                       children: [
                         Expanded(
                           child: _ContextLine(
                             icon: Icons.location_on_rounded,
-                            text: plan.location,
+                            text: TextSanitizer.clean(plan.location),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: _ContextLine(
                             icon: Icons.wb_twilight_rounded,
-                            text: plan.moment,
+                            text: TextSanitizer.clean(plan.moment),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     _ContextLine(
                       icon: Icons.cloud_rounded,
-                      text: 'Clima: ${plan.weather}',
+                      text: 'Clima: ${TextSanitizer.clean(plan.weather)}',
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
                           child: _MetricChip(
                             icon: Icons.payments_rounded,
                             label: 'Coste',
-                            value: plan.estimatedCost,
+                            value: TextSanitizer.clean(plan.estimatedCost),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -178,7 +195,7 @@ class SharePlanCard extends StatelessWidget {
                           child: _MetricChip(
                             icon: Icons.schedule_rounded,
                             label: 'Duración',
-                            value: plan.estimatedDuration,
+                            value: TextSanitizer.clean(plan.estimatedDuration),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -186,49 +203,15 @@ class SharePlanCard extends StatelessWidget {
                           child: _MetricChip(
                             icon: Icons.near_me_rounded,
                             label: 'Distancia',
-                            value: plan.estimatedDistance,
+                            value: TextSanitizer.clean(plan.estimatedDistance),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    _ItineraryPanel(steps: steps),
+                    const SizedBox(height: 10),
+                    _ItineraryPanel(plan: plan),
                     const Spacer(),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Creado con Tonight',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.62),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFE8B66B,
-                            ).withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(15),
-                            border: Border.all(
-                              color: const Color(
-                                0xFFE8B66B,
-                              ).withValues(alpha: 0.22),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.north_east_rounded,
-                            color: Color(0xFFE8B66B),
-                            size: 19,
-                          ),
-                        ),
-                      ],
-                    ),
+                    const _ShareBrandFooter(),
                   ],
                 ),
               ),
@@ -259,6 +242,128 @@ class SharePlanCard extends StatelessWidget {
       default:
         return 'La cita ya no se improvisa.';
     }
+  }
+}
+
+class _ShareBrandFooter extends StatelessWidget {
+  const _ShareBrandFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.075),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8B66B),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: const Text(
+                    'T',
+                    style: TextStyle(
+                      color: Color(0xFF100D10),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 11),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Haz tu propio plan en Tonight',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          height: 1.12,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'tonight.app',
+                        style: TextStyle(
+                          color: Color(0xFFE8B66B),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.20),
+                      blurRadius: 18,
+                      offset: const Offset(0, 9),
+                    ),
+                  ],
+                ),
+                child: QrImageView(
+                  data: SharePlanCard.qrUrl,
+                  version: QrVersions.auto,
+                  padding: EdgeInsets.zero,
+                  backgroundColor: Colors.white,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: Color(0xFF100D10),
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: Color(0xFF100D10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                'Escanéame',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.70),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -334,7 +439,7 @@ class _ContextLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 40,
+      height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 11),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.07),
@@ -378,8 +483,8 @@ class _MetricChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 58,
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
         color: const Color(0xFFE8B66B).withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(18),
@@ -428,15 +533,15 @@ class _MetricChip extends StatelessWidget {
 }
 
 class _ItineraryPanel extends StatelessWidget {
-  const _ItineraryPanel({required this.steps});
+  const _ItineraryPanel({required this.plan});
 
-  final List<String> steps;
+  final PlanModel plan;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(24),
@@ -456,14 +561,28 @@ class _ItineraryPanel extends StatelessWidget {
             'Itinerario',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.92),
-              fontSize: 17,
+              fontSize: 13,
               fontWeight: FontWeight.w900,
               letterSpacing: 0,
             ),
           ),
-          const SizedBox(height: 13),
-          ...steps.indexed.map((entry) {
-            return _ShareStep(number: entry.$1 + 1, text: entry.$2);
+          const SizedBox(height: 7),
+          ...plan.itinerarySteps.take(3).indexed.map((entry) {
+            final index = entry.$1;
+            final place = index < plan.places.length
+                ? plan.places[index]
+                : null;
+
+            return _ShareStep(
+              number: index + 1,
+              text: TextSanitizer.clean(entry.$2),
+              placeName: place == null
+                  ? null
+                  : TextSanitizer.cleanOptional(place.name),
+              address: place == null
+                  ? null
+                  : TextSanitizer.cleanOptional(place.address),
+            );
           }),
         ],
       ),
@@ -472,21 +591,28 @@ class _ItineraryPanel extends StatelessWidget {
 }
 
 class _ShareStep extends StatelessWidget {
-  const _ShareStep({required this.number, required this.text});
+  const _ShareStep({
+    required this.number,
+    required this.text,
+    this.placeName,
+    this.address,
+  });
 
   final int number;
   final String text;
+  final String? placeName;
+  final String? address;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: number == 3 ? 0 : 11),
+      padding: EdgeInsets.only(bottom: number == 3 ? 0 : 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 22,
+            height: 22,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: const Color(0xFFE8B66B),
@@ -496,25 +622,60 @@ class _ShareStep extends StatelessWidget {
               '$number',
               style: const TextStyle(
                 color: Color(0xFF100D10),
-                fontSize: 13,
+                fontSize: 11,
                 fontWeight: FontWeight.w900,
                 height: 1,
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 9),
           Expanded(
-            child: Text(
-              text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.78),
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                height: 1.24,
-                letterSpacing: 0,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (placeName != null) ...[
+                  Text(
+                    placeName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      height: 1.15,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                  if (address != null) ...[
+                    const SizedBox(height: 1),
+                    Text(
+                      address!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.54),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        height: 1.15,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 3),
+                ],
+                Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.78),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    height: 1.24,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

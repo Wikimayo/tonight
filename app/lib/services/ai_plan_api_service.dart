@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/constants/api_config.dart';
@@ -13,6 +14,8 @@ import 'mock_plan_generator.dart';
 class AiPlanApiService {
   const AiPlanApiService();
 
+  static const Duration requestTimeout = Duration(seconds: 10);
+
   Future<PlanModel> generatePlan({
     required String mood,
     required String budget,
@@ -21,6 +24,7 @@ class AiPlanApiService {
     required String moment,
     required String location,
     required String weather,
+    required String language,
     String? groupSize,
   }) async {
     final requestBody = <String, dynamic>{
@@ -32,6 +36,7 @@ class AiPlanApiService {
       'location': location,
       'weather': weather,
       'groupSize': groupSize,
+      'language': language,
     };
 
     try {
@@ -44,7 +49,7 @@ class AiPlanApiService {
             },
             body: jsonEncode(requestBody),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(requestTimeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return _fallbackPlan(
@@ -112,12 +117,14 @@ class AiPlanApiService {
     Object? error,
     StackTrace? stackTrace,
   }) {
-    developer.log(
-      '$reason. Using MockPlanGenerator fallback.',
-      name: 'AiPlanApiService',
-      error: error,
-      stackTrace: stackTrace,
-    );
+    if (kDebugMode) {
+      developer.log(
+        '$reason. Using MockPlanGenerator fallback.',
+        name: 'AiPlanApiService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
 
     return MockPlanGenerator.generate(
       mood: mood,

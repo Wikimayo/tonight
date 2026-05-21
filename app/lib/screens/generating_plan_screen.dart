@@ -2,12 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_texts.dart';
 import '../models/plan_model.dart';
 import '../services/analytics_service.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/plan_generation_service.dart';
 import '../services/usage_limits_service.dart';
 import '../services/weather_service.dart';
+import '../utils/tonight_page_route.dart';
 import '../widgets/glass_panel.dart';
+import '../widgets/tonight_app_bar.dart';
 import 'premium_screen.dart';
 import 'plan_result_screen.dart';
 
@@ -37,48 +42,81 @@ class GeneratingPlanScreen extends StatefulWidget {
   State<GeneratingPlanScreen> createState() => _GeneratingPlanScreenState();
 }
 
-class _GeneratingPlanScreenState extends State<GeneratingPlanScreen> {
+class _GeneratingPlanScreenState extends State<GeneratingPlanScreen>
+    with SingleTickerProviderStateMixin {
   static const Duration _minimumLoadingDuration = Duration(milliseconds: 2500);
 
   final PlanGenerationService _planGenerationService =
       const PlanGenerationService();
-  final List<Timer> _timers = [];
-  int visiblePhraseCount = 1;
-
-  final List<String> phrases = const [
-    'Buscando sitios con buena vibra',
-    'Calculando tiempos y distancia',
-    'Preparando una experiencia diferente',
-  ];
+  late final AnimationController _ambientController;
+  Timer? _phaseTimer;
+  Timer? _progressTimer;
+  int phaseIndex = 0;
+  double progress = 0.02;
+  bool isCancelled = false;
 
   @override
   void initState() {
     super.initState();
-    _schedulePhrase(2, const Duration(milliseconds: 750));
-    _schedulePhrase(3, const Duration(milliseconds: 1450));
+    _ambientController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 5200),
+    )..repeat();
+    _startPhaseLoop();
+    _startProgressLoop();
     _generatePlanAndOpenResult();
   }
 
   @override
   void dispose() {
-    for (final timer in _timers) {
-      timer.cancel();
-    }
+    isCancelled = true;
+    _phaseTimer?.cancel();
+    _progressTimer?.cancel();
+    _ambientController.dispose();
     super.dispose();
   }
 
-  void _schedulePhrase(int count, Duration delay) {
-    _timers.add(
-      Timer(delay, () {
-        if (!mounted) {
-          return;
-        }
+  void _startPhaseLoop() {
+    _phaseTimer = Timer.periodic(const Duration(milliseconds: 1150), (_) {
+      if (!mounted || isCancelled) {
+        return;
+      }
 
-        setState(() {
-          visiblePhraseCount = count;
-        });
-      }),
-    );
+      setState(() {
+        final phases = AppTexts.of(
+          LanguageService.currentLanguage,
+        ).generatingPhases;
+        phaseIndex = (phaseIndex + 1) % phases.length;
+      });
+    });
+  }
+
+  void _startProgressLoop() {
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
+      if (!mounted || isCancelled) {
+        return;
+      }
+
+      setState(() {
+        progress = (progress + ((0.94 - progress) * 0.035)).clamp(0.02, 0.94);
+      });
+    });
+  }
+
+  Future<void> _completeProgress() async {
+    _phaseTimer?.cancel();
+    _progressTimer?.cancel();
+    if (!mounted || isCancelled) {
+      return;
+    }
+
+    setState(() {
+      phaseIndex =
+          AppTexts.of(LanguageService.currentLanguage).generatingPhases.length -
+          1;
+      progress = 1;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 240));
   }
 
   Future<void> _generatePlanAndOpenResult() async {
@@ -86,6 +124,9 @@ class _GeneratingPlanScreenState extends State<GeneratingPlanScreen> {
 
     try {
       if (!await UsageLimitsService.canGeneratePlan()) {
+        if (isCancelled || !mounted) {
+          return;
+        }
         await const AnalyticsService().logFreePlanLimitReached(
           source: 'generating_screen',
         );
@@ -94,6 +135,10 @@ class _GeneratingPlanScreenState extends State<GeneratingPlanScreen> {
       }
 
       final resolvedWeather = await _resolveWeather();
+      if (isCancelled || !mounted) {
+        return;
+      }
+
       final plan = await _planGenerationService.generatePlan(
         mood: widget.mood,
         budget: widget.budget,
@@ -110,6 +155,9 @@ class _GeneratingPlanScreenState extends State<GeneratingPlanScreen> {
       if (remainingLoadingTime > Duration.zero) {
         await Future<void>.delayed(remainingLoadingTime);
       }
+      if (isCancelled || !mounted) {
+        return;
+      }
 
       await UsageLimitsService.registerPlanGenerated();
       await const AnalyticsService().logPlanGenerated(
@@ -120,8 +168,16 @@ class _GeneratingPlanScreenState extends State<GeneratingPlanScreen> {
         moment: plan.moment,
         weather: plan.weather,
       );
+      await _completeProgress();
+      if (isCancelled || !mounted) {
+        return;
+      }
+      HapticService.success();
       _openResultScreen(plan);
     } catch (_) {
+      if (isCancelled) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -149,135 +205,150 @@ class _GeneratingPlanScreenState extends State<GeneratingPlanScreen> {
     return resolvedWeather;
   }
 
+  void _cancelGeneration({bool pop = true}) {
+    HapticService.lightImpact();
+    isCancelled = true;
+    _phaseTimer?.cancel();
+    _progressTimer?.cancel();
+    _ambientController.stop();
+
+    if (pop && mounted) {
+      Navigator.of(context).maybePop();
+    }
+  }
+
   void _openResultScreen(PlanModel plan) {
-    if (!mounted) {
+    if (!mounted || isCancelled) {
       return;
     }
 
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => PlanResultScreen(plan: plan)),
+      tonightPageRoute<void>((_) => PlanResultScreen(plan: plan)),
     );
   }
 
   void _openPremiumScreen() {
-    if (!mounted) {
+    if (!mounted || isCancelled) {
       return;
     }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const PremiumScreen()),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(tonightPageRoute<void>((_) => const PremiumScreen()));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF251329), Color(0xFF0D0B11), Color(0xFF08080C)],
-            stops: [0, 0.48, 1],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Spacer(),
-                Text(
-                  'Creando tu plan',
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: Colors.white,
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    height: 1.02,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Analizando mood, zona, clima y momento...',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.70),
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 34),
-                Center(
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.94, end: 1),
-                    duration: const Duration(milliseconds: 900),
-                    curve: Curves.easeInOut,
-                    builder: (context, value, child) {
-                      return Transform.scale(scale: value, child: child);
-                    },
-                    child: Container(
-                      width: 86,
-                      height: 86,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.055),
-                        border: Border.all(
-                          color: const Color(
-                            0xFFE8B66B,
-                          ).withValues(alpha: 0.20),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFFE8B66B,
-                            ).withValues(alpha: 0.18),
-                            blurRadius: 34,
-                            offset: const Offset(0, 14),
-                          ),
-                        ],
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          SizedBox(
-                            width: 58,
-                            height: 58,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              color: const Color(0xFFE8B66B),
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.10,
-                              ),
-                            ),
-                          ),
-                          const Icon(
-                            Icons.auto_awesome_rounded,
-                            color: Color(0xFFE8B66B),
-                            size: 24,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 38),
-                GlassPanel(
-                  padding: const EdgeInsets.all(20),
-                  borderRadius: 30,
-                  opacity: 0.05,
-                  child: Column(
-                    children: phrases.indexed.map((entry) {
-                      final index = entry.$1;
-                      final phrase = entry.$2;
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+    final phases = texts.generatingPhases;
 
-                      return _LoadingPhrase(
-                        text: phrase,
-                        isVisible: index < visiblePhraseCount,
-                      );
-                    }).toList(),
+    return PopScope<void>(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _cancelGeneration(pop: false);
+        }
+      },
+      child: Scaffold(
+        appBar: TonightAppBar(
+          title: texts.generatingTitle,
+          backIcon: Icons.close_rounded,
+          backTooltip: texts.cancel,
+          onBack: _cancelGeneration,
+          actions: [
+            TextButton(
+              onPressed: _cancelGeneration,
+              child: Text(
+                texts.cancel,
+                style: const TextStyle(
+                  color: Color(0xFFE8B66B),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+        body: AnimatedBuilder(
+          animation: _ambientController,
+          builder: (context, child) {
+            final value = _ambientController.value;
+            final begin = Alignment.lerp(
+              Alignment.topLeft,
+              Alignment.topRight,
+              value,
+            )!;
+            final end = Alignment.lerp(
+              Alignment.bottomRight,
+              Alignment.bottomLeft,
+              value,
+            )!;
+
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: begin,
+                  end: end,
+                  colors: const [
+                    Color(0xFF2B1633),
+                    Color(0xFF111019),
+                    Color(0xFF07080D),
+                  ],
+                  stops: const [0, 0.52, 1],
+                ),
+              ),
+              child: child,
+            );
+          },
+          child: SafeArea(
+            child: Stack(
+              children: [
+                _AmbientGlow(animation: _ambientController),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        texts.creatingYourPlan,
+                        style: Theme.of(context).textTheme.displaySmall
+                            ?.copyWith(
+                              color: Colors.white,
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              height: 1.02,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'La IA está cruzando señales para que Tonight no parezca una lista cualquiera.',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.68),
+                              fontWeight: FontWeight.w600,
+                              height: 1.25,
+                            ),
+                      ),
+                      const SizedBox(height: 18),
+                      GlassPanel(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                        borderRadius: 34,
+                        opacity: 0.065,
+                        child: Column(
+                          children: [
+                            _AiSparkleOrb(animation: _ambientController),
+                            const SizedBox(height: 16),
+                            _PhaseMessage(text: phases[phaseIndex]),
+                            const SizedBox(height: 16),
+                            _ProgressBar(progress: progress),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _LiveSignalRow(progress: progress),
+                    ],
                   ),
                 ),
-                const Spacer(flex: 2),
               ],
             ),
           ),
@@ -287,62 +358,262 @@ class _GeneratingPlanScreenState extends State<GeneratingPlanScreen> {
   }
 }
 
-class _LoadingPhrase extends StatelessWidget {
-  const _LoadingPhrase({required this.text, required this.isVisible});
+class _AmbientGlow extends StatelessWidget {
+  const _AmbientGlow({required this.animation});
 
-  final String text;
-  final bool isVisible;
+  final Animation<double> animation;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 380),
-      curve: Curves.easeOutCubic,
-      opacity: isVisible ? 1 : 0.28,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final value = animation.value;
+
+        return Stack(
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 380),
-              curve: Curves.easeOutCubic,
-              width: 28,
-              height: 28,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isVisible
-                    ? const Color(0xFFE8B66B).withValues(alpha: 0.16)
-                    : Colors.white.withValues(alpha: 0.055),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isVisible
-                      ? const Color(0xFFE8B66B).withValues(alpha: 0.24)
-                      : Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-              child: Icon(
-                isVisible ? Icons.check_rounded : Icons.more_horiz_rounded,
-                color: isVisible
-                    ? const Color(0xFFE8B66B)
-                    : Colors.white.withValues(alpha: 0.34),
-                size: 16,
+            Positioned(
+              top: -120 + (24 * value),
+              right: -95,
+              child: _GlowDisk(
+                size: 280,
+                color: const Color(0xFFE8B66B).withValues(alpha: 0.22),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                text,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.white.withValues(
-                    alpha: isVisible ? 0.86 : 0.42,
+            Positioned(
+              bottom: -130,
+              left: -110 + (32 * value),
+              child: _GlowDisk(
+                size: 310,
+                color: const Color(0xFF8F4FFF).withValues(alpha: 0.18),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _GlowDisk extends StatelessWidget {
+  const _GlowDisk({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
+      ),
+    );
+  }
+}
+
+class _AiSparkleOrb extends StatelessWidget {
+  const _AiSparkleOrb({required this.animation});
+
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final pulse =
+            0.94 + (0.08 * Curves.easeInOut.transform(animation.value));
+
+        return Transform.scale(
+          scale: pulse,
+          child: SizedBox(
+            width: 96,
+            height: 96,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFE8B66B).withValues(alpha: 0.09),
+                    border: Border.all(
+                      color: const Color(0xFFE8B66B).withValues(alpha: 0.18),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE8B66B).withValues(alpha: 0.20),
+                        blurRadius: 42,
+                        offset: const Offset(0, 18),
+                      ),
+                    ],
                   ),
-                  fontWeight: FontWeight.w700,
-                  height: 1.3,
                 ),
+                SizedBox(
+                  width: 66,
+                  height: 66,
+                  child: CircularProgressIndicator(
+                    value: null,
+                    strokeWidth: 3,
+                    color: const Color(0xFFE8B66B),
+                    backgroundColor: Colors.white.withValues(alpha: 0.09),
+                  ),
+                ),
+                const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Color(0xFFE8B66B),
+                  size: 30,
+                ),
+                Positioned(
+                  top: 13,
+                  right: 15,
+                  child: Icon(
+                    Icons.star_rounded,
+                    color: Colors.white.withValues(alpha: 0.70),
+                    size: 15,
+                  ),
+                ),
+                Positioned(
+                  bottom: 18,
+                  left: 14,
+                  child: Icon(
+                    Icons.brightness_7_rounded,
+                    color: const Color(0xFFE8B66B).withValues(alpha: 0.62),
+                    size: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PhaseMessage extends StatelessWidget {
+  const _PhaseMessage({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 360),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final slide = Tween<Offset>(
+          begin: const Offset(0, 0.16),
+          end: Offset.zero,
+        ).animate(animation);
+
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: slide, child: child),
+        );
+      },
+      child: Text(
+        text,
+        key: ValueKey(text),
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          height: 1.12,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProgressBar extends StatelessWidget {
+  const _ProgressBar({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (progress * 100).round().clamp(0, 100);
+
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            minHeight: 9,
+            value: progress,
+            color: const Color(0xFFE8B66B),
+            backgroundColor: Colors.white.withValues(alpha: 0.09),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Text(
+              'IA trabajando',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Colors.white.withValues(alpha: 0.58),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$percent%',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: const Color(0xFFE8B66B),
+                fontWeight: FontWeight.w900,
               ),
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+class _LiveSignalRow extends StatelessWidget {
+  const _LiveSignalRow({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = progress < 0.72
+        ? 'Afinando señales en tiempo real'
+        : 'Si tarda un poco, estoy buscando una opción mejor';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.graphic_eq_rounded,
+            color: Color(0xFFE8B66B),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.66),
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

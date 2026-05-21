@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_texts.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/mock_trending_service.dart';
+import '../utils/tonight_page_route.dart';
 import '../widgets/glass_panel.dart';
 import '../widgets/trending_plan_card.dart';
 import 'plan_detail_screen.dart';
@@ -70,6 +74,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(
@@ -88,7 +94,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Explorar',
+                  texts.explore,
                   style: Theme.of(context).textTheme.displaySmall?.copyWith(
                     color: Colors.white,
                     fontSize: 42,
@@ -98,7 +104,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Descubre planes populares',
+                  texts.exploreSubtitle,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Colors.white.withValues(alpha: 0.70),
                     fontWeight: FontWeight.w700,
@@ -107,11 +113,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 ),
                 const SizedBox(height: 28),
                 _TrendingExplorer(
+                  title: texts.trending,
                   plans: trendingPlans,
                   onPlanTap: _openTrendingPlan,
                 ),
                 const SizedBox(height: 32),
                 _MoodCategories(
+                  texts: texts,
                   categories: categories,
                   onCategoryTap: _openMoodSetup,
                 ),
@@ -124,25 +132,28 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   void _openTrendingPlan(TrendingPlan trendingPlan) {
+    HapticService.lightImpact();
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlanDetailScreen(plan: trendingPlan.plan),
-      ),
+      tonightPageRoute<void>((_) => PlanDetailScreen(plan: trendingPlan.plan)),
     );
   }
 
   void _openMoodSetup(String mood) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlanSetupScreen(initialMood: mood),
-      ),
-    );
+    HapticService.selectionClick();
+    Navigator.of(
+      context,
+    ).push(tonightPageRoute<void>((_) => PlanSetupScreen(initialMood: mood)));
   }
 }
 
 class _TrendingExplorer extends StatelessWidget {
-  const _TrendingExplorer({required this.plans, required this.onPlanTap});
+  const _TrendingExplorer({
+    required this.title,
+    required this.plans,
+    required this.onPlanTap,
+  });
 
+  final String title;
   final List<TrendingPlan> plans;
   final ValueChanged<TrendingPlan> onPlanTap;
 
@@ -169,7 +180,7 @@ class _TrendingExplorer extends StatelessWidget {
               _SectionIcon(icon: Icons.local_fire_department_rounded),
               const SizedBox(width: 12),
               Text(
-                'Trending',
+                title,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w900,
@@ -204,10 +215,12 @@ class _TrendingExplorer extends StatelessWidget {
 
 class _MoodCategories extends StatelessWidget {
   const _MoodCategories({
+    required this.texts,
     required this.categories,
     required this.onCategoryTap,
   });
 
+  final AppTextValues texts;
   final List<_MoodCategory> categories;
   final ValueChanged<String> onCategoryTap;
 
@@ -221,7 +234,7 @@ class _MoodCategories extends StatelessWidget {
             _SectionIcon(icon: Icons.auto_awesome_rounded),
             const SizedBox(width: 12),
             Text(
-              'Empieza por una vibe',
+              texts.startByVibe,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w900,
@@ -252,6 +265,7 @@ class _MoodCategories extends StatelessWidget {
                 return SizedBox(
                   width: cardWidth,
                   child: _MoodCategoryCard(
+                    texts: texts,
                     category: category,
                     onTap: () => onCategoryTap(category.title),
                   ),
@@ -266,8 +280,13 @@ class _MoodCategories extends StatelessWidget {
 }
 
 class _MoodCategoryCard extends StatefulWidget {
-  const _MoodCategoryCard({required this.category, required this.onTap});
+  const _MoodCategoryCard({
+    required this.texts,
+    required this.category,
+    required this.onTap,
+  });
 
+  final AppTextValues texts;
   final _MoodCategory category;
   final VoidCallback onTap;
 
@@ -290,7 +309,10 @@ class _MoodCategoryCardState extends State<_MoodCategoryCard> {
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(30),
         child: InkWell(
-          onTap: widget.onTap,
+          onTap: () {
+            HapticService.selectionClick();
+            widget.onTap();
+          },
           onHighlightChanged: (value) {
             setState(() {
               isPressed = value;
@@ -341,7 +363,7 @@ class _MoodCategoryCardState extends State<_MoodCategoryCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            category.title,
+                            widget.texts.moodLabel(category.title),
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   color: Colors.white,

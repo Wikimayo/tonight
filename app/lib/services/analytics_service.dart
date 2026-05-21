@@ -95,6 +95,14 @@ class AnalyticsService {
     return _logEvent('premium_mock_disabled');
   }
 
+  Future<void> logSmartNotificationsEnabled() {
+    return _logEvent('smart_notifications_enabled');
+  }
+
+  Future<void> logSmartNotificationsDisabled() {
+    return _logEvent('smart_notifications_disabled');
+  }
+
   Future<void> logRemainingFreePlansViewed({
     required int remainingPlans,
     required int dailyLimit,

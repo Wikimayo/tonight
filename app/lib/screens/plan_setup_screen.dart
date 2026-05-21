@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_texts.dart';
 import '../services/analytics_service.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/location_service.dart';
 import '../services/premium_service.dart';
 import '../services/usage_limits_service.dart';
 import '../services/user_preferences_service.dart';
+import '../utils/text_sanitizer.dart';
+import '../utils/tonight_page_route.dart';
 import '../widgets/glass_panel.dart';
 import '../widgets/mood_chip.dart';
 import '../widgets/primary_cta_button.dart';
+import '../widgets/tonight_app_bar.dart';
 import 'generating_plan_screen.dart';
 import 'premium_screen.dart';
 
@@ -138,7 +144,10 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+
     return Scaffold(
+      appBar: TonightAppBar(title: texts.planSetupTitle),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -154,10 +163,8 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 26),
                 Text(
-                  'Vamos a preparar tu plan',
+                  texts.planSetupHeading,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     color: Colors.white,
                     fontSize: 34,
@@ -167,7 +174,7 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Mood seleccionado: ${widget.mood}',
+                  '${texts.selectedMoodPrefix}: ${texts.moodLabel(widget.mood)}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: const Color(0xFFE8B66B),
                     fontWeight: FontWeight.w700,
@@ -181,9 +188,10 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _SetupSection(
-                          title: 'Momento',
+                          title: texts.moment,
                           options: moments,
                           selectedOption: selectedMoment,
+                          labelFor: texts.momentLabel,
                           onSelected: (value) {
                             setState(() {
                               selectedMoment = value;
@@ -192,6 +200,7 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                         ),
                         const SizedBox(height: 28),
                         _LocationSection(
+                          texts: texts,
                           controller: locationController,
                           isTravelMood: widget.mood == 'Viaje',
                           isLoading: isLocating,
@@ -199,9 +208,10 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                         ),
                         const SizedBox(height: 28),
                         _SetupSection(
-                          title: 'Clima',
+                          title: texts.weather,
                           options: weathers,
                           selectedOption: selectedWeather,
+                          labelFor: texts.weatherLabel,
                           onSelected: (value) {
                             setState(() {
                               selectedWeather = value;
@@ -223,9 +233,10 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                           const SizedBox(height: 28),
                         ],
                         _SetupSection(
-                          title: 'Presupuesto',
+                          title: texts.budget,
                           options: budgets,
                           selectedOption: selectedBudget,
+                          labelFor: texts.budgetLabel,
                           onSelected: (value) {
                             setState(() {
                               selectedBudget = value;
@@ -234,9 +245,10 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                         ),
                         const SizedBox(height: 28),
                         _SetupSection(
-                          title: 'Tiempo disponible',
+                          title: texts.timeAvailable,
                           options: times,
                           selectedOption: selectedTime,
+                          labelFor: texts.timeLabel,
                           onSelected: (value) {
                             setState(() {
                               selectedTime = value;
@@ -245,9 +257,10 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                         ),
                         const SizedBox(height: 28),
                         _SetupSection(
-                          title: 'Distancia',
+                          title: texts.distance,
                           options: distances,
                           selectedOption: selectedDistance,
+                          labelFor: texts.distanceLabel,
                           onSelected: (value) {
                             setState(() {
                               selectedDistance = value;
@@ -260,7 +273,7 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                   ),
                 ),
                 PrimaryCtaButton(
-                  label: 'Generar plan',
+                  label: texts.generatePlan,
                   onPressed: _generatePlan,
                 ),
                 const SizedBox(height: 10),
@@ -316,6 +329,7 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
 
   Future<void> _generatePlan() async {
     FocusScope.of(context).unfocus();
+    HapticService.heavyImpact();
     final canGenerate = await UsageLimitsService.canGeneratePlan();
     if (!mounted) {
       return;
@@ -331,14 +345,14 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
 
       await Navigator.of(
         context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const PremiumScreen()));
+      ).push(tonightPageRoute<void>((_) => const PremiumScreen()));
       _refreshUsageSummary();
       return;
     }
 
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => GeneratingPlanScreen(
+      tonightPageRoute<void>(
+        (_) => GeneratingPlanScreen(
           mood: widget.mood,
           budget: selectedBudget,
           time: selectedTime,
@@ -400,7 +414,7 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
     List<String> options,
     String fallback,
   ) {
-    final trimmedValue = value?.trim();
+    final trimmedValue = TextSanitizer.cleanOptional(value);
     if (trimmedValue != null && options.contains(trimmedValue)) {
       return trimmedValue;
     }
@@ -415,12 +429,14 @@ class _SetupSection extends StatelessWidget {
     required this.options,
     required this.selectedOption,
     required this.onSelected,
+    this.labelFor,
   });
 
   final String title;
   final List<String> options;
   final String selectedOption;
   final ValueChanged<String> onSelected;
+  final String Function(String value)? labelFor;
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +469,8 @@ class _SetupSection extends StatelessWidget {
               runSpacing: 10,
               children: options.map((option) {
                 return MoodChip(
-                  label: option,
+                  label: labelFor?.call(option) ?? option,
+                  iconKey: option,
                   isSelected: selectedOption == option,
                   onTap: () => onSelected(option),
                 );
@@ -526,12 +543,14 @@ class _SetupUsageHint extends StatelessWidget {
 
 class _LocationSection extends StatelessWidget {
   const _LocationSection({
+    required this.texts,
     required this.controller,
     required this.isTravelMood,
     required this.isLoading,
     required this.onUseCurrentLocation,
   });
 
+  final AppTextValues texts;
   final TextEditingController controller;
   final bool isTravelMood;
   final bool isLoading;
@@ -608,6 +627,7 @@ class _LocationSection extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             _UseLocationButton(
+              texts: texts,
               isLoading: isLoading,
               onPressed: onUseCurrentLocation,
             ),
@@ -641,8 +661,13 @@ class _SectionIcon extends StatelessWidget {
 }
 
 class _UseLocationButton extends StatelessWidget {
-  const _UseLocationButton({required this.isLoading, required this.onPressed});
+  const _UseLocationButton({
+    required this.texts,
+    required this.isLoading,
+    required this.onPressed,
+  });
 
+  final AppTextValues texts;
   final bool isLoading;
   final VoidCallback onPressed;
 
@@ -717,29 +742,6 @@ class _UseLocationButton extends StatelessWidget {
                     ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BackButton extends StatelessWidget {
-  const _BackButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
-        child: const SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
         ),
       ),
     );

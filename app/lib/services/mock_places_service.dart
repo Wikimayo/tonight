@@ -1,4 +1,5 @@
 import '../models/place_model.dart';
+import '../utils/text_sanitizer.dart';
 
 class MockPlacesService {
   const MockPlacesService._();
@@ -185,23 +186,27 @@ class MockPlacesService {
   }
 
   static int _moodScore(PlaceModel place, String mood) {
-    if (place.moodTags.contains(mood)) {
+    final cleanMood = TextSanitizer.clean(mood);
+    final moodTags = place.moodTags.map(TextSanitizer.clean).toSet();
+    if (moodTags.contains(cleanMood)) {
       return 8;
     }
-    if (place.moodTags.contains('Todos')) {
+    if (moodTags.contains('Todos')) {
       return 3;
     }
     return 0;
   }
 
   static int _weatherScore(PlaceModel place, String weather) {
-    if (weather == 'Automático' || weather == 'AutomÃ¡tico') {
+    final cleanWeather = TextSanitizer.clean(weather);
+    final weatherTags = place.weatherTags.map(TextSanitizer.clean).toSet();
+    if (cleanWeather == 'Automático') {
       return 3;
     }
-    if (place.weatherTags.contains(weather)) {
+    if (weatherTags.contains(cleanWeather)) {
       return 5;
     }
-    if (place.weatherTags.contains('Todos')) {
+    if (weatherTags.contains('Todos')) {
       return 2;
     }
     return 0;
@@ -244,47 +249,44 @@ class MockPlacesService {
   }
 
   static String _normalize(String value) {
-    return value
+    return TextSanitizer.clean(value)
         .trim()
         .toLowerCase()
-        .replaceAll('á', 'a')
-        .replaceAll('à', 'a')
-        .replaceAll('â', 'a')
-        .replaceAll('ä', 'a')
-        .replaceAll('ã', 'a')
-        .replaceAll('é', 'e')
-        .replaceAll('è', 'e')
-        .replaceAll('ê', 'e')
-        .replaceAll('ë', 'e')
-        .replaceAll('í', 'i')
-        .replaceAll('ì', 'i')
-        .replaceAll('î', 'i')
-        .replaceAll('ï', 'i')
-        .replaceAll('ó', 'o')
-        .replaceAll('ò', 'o')
-        .replaceAll('ô', 'o')
-        .replaceAll('ö', 'o')
-        .replaceAll('õ', 'o')
-        .replaceAll('ú', 'u')
-        .replaceAll('ù', 'u')
-        .replaceAll('û', 'u')
-        .replaceAll('ü', 'u')
-        .replaceAll('ñ', 'n')
-        .replaceAll('ç', 'c');
+        .replaceAll('Ã¡', 'a')
+        .replaceAll('Ã ', 'a')
+        .replaceAll('Ã¢', 'a')
+        .replaceAll('Ã¤', 'a')
+        .replaceAll('Ã£', 'a')
+        .replaceAll('Ã©', 'e')
+        .replaceAll('Ã¨', 'e')
+        .replaceAll('Ãª', 'e')
+        .replaceAll('Ã«', 'e')
+        .replaceAll('Ã­', 'i')
+        .replaceAll('Ã¬', 'i')
+        .replaceAll('Ã®', 'i')
+        .replaceAll('Ã¯', 'i')
+        .replaceAll('Ã³', 'o')
+        .replaceAll('Ã²', 'o')
+        .replaceAll('Ã´', 'o')
+        .replaceAll('Ã¶', 'o')
+        .replaceAll('Ãµ', 'o')
+        .replaceAll('Ãº', 'u')
+        .replaceAll('Ã¹', 'u')
+        .replaceAll('Ã»', 'u')
+        .replaceAll('Ã¼', 'u')
+        .replaceAll('Ã±', 'n')
+        .replaceAll('Ã§', 'c');
   }
 
   static int _priceRank(String priceLevel) {
-    switch (priceLevel) {
+    switch (TextSanitizer.clean(priceLevel)) {
       case 'Gratis':
         return 0;
       case '€':
-      case 'â‚¬':
         return 1;
       case '€€€':
-      case 'â‚¬â‚¬â‚¬':
         return 3;
       case '€€':
-      case 'â‚¬â‚¬':
       default:
         return 2;
     }
@@ -300,6 +302,7 @@ class MockPlacesService {
       weatherTags: place.weatherTags,
       priceLevel: place.priceLevel,
       description: place.description,
+      address: place.address,
       latitude: place.latitude,
       longitude: place.longitude,
     );
@@ -311,10 +314,10 @@ class MockPlacesService {
         city,
         suffix: 'cafe',
         name: city.cafeName,
-        category: 'café',
+        category: 'cafÃ©',
         moodTags: const ['Cita', 'Solo', 'Chill'],
-        weatherTags: const ['Lluvia', 'Frío', 'Nublado', 'Todos'],
-        priceLevel: '€',
+        weatherTags: const ['Lluvia', 'FrÃ­o', 'Nublado', 'Todos'],
+        priceLevel: 'â‚¬',
         description: city.cafeDescription,
         latOffset: 0.001,
         lngOffset: -0.001,
@@ -326,7 +329,7 @@ class MockPlacesService {
         category: 'brunch',
         moodTags: const ['Amigos', 'Chill', 'Solo', 'Grupo'],
         weatherTags: const ['Soleado', 'Nublado', 'Todos'],
-        priceLevel: '€€',
+        priceLevel: 'â‚¬â‚¬',
         description: city.brunchDescription,
         latOffset: -0.001,
         lngOffset: 0.002,
@@ -337,8 +340,8 @@ class MockPlacesService {
         name: city.restaurantName,
         category: 'restaurante',
         moodTags: const ['Cita', 'Grupo', 'Amigos', 'Viaje'],
-        weatherTags: const ['Frío', 'Lluvia', 'Nublado', 'Todos'],
-        priceLevel: '€€',
+        weatherTags: const ['FrÃ­o', 'Lluvia', 'Nublado', 'Todos'],
+        priceLevel: 'â‚¬â‚¬',
         description: city.restaurantDescription,
         latOffset: 0.002,
         lngOffset: 0.001,
@@ -350,7 +353,7 @@ class MockPlacesService {
         category: 'rooftop',
         moodTags: const ['Cita', 'Amigos', 'Fiesta', 'Viaje'],
         weatherTags: const ['Soleado', 'Calor', 'Nublado'],
-        priceLevel: '€€€',
+        priceLevel: 'â‚¬â‚¬â‚¬',
         description: city.rooftopDescription,
         latOffset: 0.003,
         lngOffset: -0.002,
@@ -361,8 +364,8 @@ class MockPlacesService {
         name: city.barName,
         category: 'bar',
         moodTags: const ['Amigos', 'Fiesta', 'Grupo', 'Sorpresa'],
-        weatherTags: const ['Lluvia', 'Frío', 'Nublado', 'Todos'],
-        priceLevel: '€€',
+        weatherTags: const ['Lluvia', 'FrÃ­o', 'Nublado', 'Todos'],
+        priceLevel: 'â‚¬â‚¬',
         description: city.barDescription,
         latOffset: -0.002,
         lngOffset: -0.001,
@@ -373,8 +376,8 @@ class MockPlacesService {
         name: city.museumName,
         category: 'museo',
         moodTags: const ['Solo', 'Chill', 'Cita', 'Viaje', 'Sorpresa'],
-        weatherTags: const ['Lluvia', 'Frío', 'Nublado'],
-        priceLevel: city.freeMuseum ? 'Gratis' : '€',
+        weatherTags: const ['Lluvia', 'FrÃ­o', 'Nublado'],
+        priceLevel: city.freeMuseum ? 'Gratis' : 'â‚¬',
         description: city.museumDescription,
         latOffset: 0.004,
         lngOffset: 0.003,
@@ -409,8 +412,8 @@ class MockPlacesService {
         name: city.indoorName,
         category: 'actividad indoor',
         moodTags: const ['Sorpresa', 'Grupo', 'Amigos', 'Solo'],
-        weatherTags: const ['Lluvia', 'Frío', 'Calor', 'Nublado'],
-        priceLevel: '€€',
+        weatherTags: const ['Lluvia', 'FrÃ­o', 'Calor', 'Nublado'],
+        priceLevel: 'â‚¬â‚¬',
         description: city.indoorDescription,
         latOffset: -0.004,
         lngOffset: -0.003,
@@ -446,7 +449,7 @@ class MockPlacesService {
         category: 'experiencia local',
         moodTags: const ['Viaje', 'Sorpresa', 'Amigos', 'Grupo', 'Solo'],
         weatherTags: const ['Todos'],
-        priceLevel: '€',
+        priceLevel: 'â‚¬',
         description: city.localDescription,
         latOffset: 0.002,
         lngOffset: -0.005,
@@ -468,16 +471,37 @@ class MockPlacesService {
   }) {
     return PlaceModel(
       id: '${_normalize(city.name).replaceAll(' ', '-')}-$suffix',
-      name: name,
-      category: category,
-      location: city.name,
-      moodTags: moodTags,
-      weatherTags: weatherTags,
-      priceLevel: priceLevel,
-      description: description,
+      name: TextSanitizer.clean(name),
+      category: TextSanitizer.clean(category),
+      location: TextSanitizer.clean(city.name),
+      moodTags: moodTags.map(TextSanitizer.clean).toList(),
+      weatherTags: weatherTags.map(TextSanitizer.clean).toList(),
+      priceLevel: TextSanitizer.clean(priceLevel),
+      description: TextSanitizer.clean(description),
+      address: _addressFor(city, suffix),
       latitude: city.latitude + latOffset,
       longitude: city.longitude + lngOffset,
     );
+  }
+
+  static String _addressFor(_CitySeed city, String suffix) {
+    final street = switch (suffix) {
+      'cafe' => 'Calle Aurora 12',
+      'brunch' => 'Plaza del Mercado 4',
+      'restaurant' => 'Calle Mayor 28',
+      'rooftop' => 'Avenida Central 17, azotea',
+      'bar' => 'Calle de la Musica 8',
+      'museum' => 'Paseo de las Artes 3',
+      'park' => 'Entrada principal del parque',
+      'viewpoint' => 'Camino del Mirador s/n',
+      'indoor' => 'Calle Talleres 16',
+      'low-cost' => 'Mercado municipal, puesto 6',
+      'walk' => 'Inicio en Plaza Principal',
+      'local' => 'Calle del Barrio 21',
+      _ => 'Centro de la ciudad',
+    };
+
+    return '$street, ${TextSanitizer.clean(city.name)}';
   }
 
   static final List<PlaceModel> _places = List<PlaceModel>.unmodifiable(
@@ -487,14 +511,15 @@ class MockPlacesService {
   static final List<PlaceModel> _genericPlaces = List<PlaceModel>.unmodifiable([
     PlaceModel(
       id: 'generic-cafe-refugio',
-      name: 'Café Refugio',
-      category: 'café',
+      name: 'CafÃ© Refugio',
+      category: 'cafÃ©',
       location: 'tu zona',
       moodTags: const ['Cita', 'Solo', 'Chill', 'Todos'],
-      weatherTags: const ['Lluvia', 'Frío', 'Nublado', 'Todos'],
-      priceLevel: '€',
+      weatherTags: const ['Lluvia', 'FrÃ­o', 'Nublado', 'Todos'],
+      priceLevel: 'â‚¬',
       description:
-          'Café cálido de barrio con mesas pequeñas y ritmo tranquilo.',
+          'CafÃ© cÃ¡lido de barrio con mesas pequeÃ±as y ritmo tranquilo.',
+      address: 'Calle Principal 12',
       latitude: 40.4168,
       longitude: -3.7038,
     ),
@@ -505,9 +530,10 @@ class MockPlacesService {
       location: 'tu zona',
       moodTags: const ['Amigos', 'Grupo', 'Viaje', 'Sorpresa'],
       weatherTags: const ['Todos'],
-      priceLevel: '€',
+      priceLevel: 'â‚¬',
       description:
-          'Mercado informal con comida fácil, gente local y opciones para todos.',
+          'Mercado informal con comida fÃ¡cil, gente local y opciones para todos.',
+      address: 'Mercado municipal, puesto 6',
       latitude: 41.3851,
       longitude: 2.1734,
     ),
@@ -521,6 +547,7 @@ class MockPlacesService {
       priceLevel: 'Gratis',
       description:
           'Ruta breve con aire, escaparates y una parada bonita para mirar la zona.',
+      address: 'Inicio en Plaza Central',
       latitude: 38.7223,
       longitude: -9.1393,
     ),
@@ -530,10 +557,11 @@ class MockPlacesService {
       category: 'actividad indoor',
       location: 'tu zona',
       moodTags: const ['Sorpresa', 'Grupo', 'Amigos', 'Solo'],
-      weatherTags: const ['Lluvia', 'Frío', 'Calor', 'Nublado'],
-      priceLevel: '€€',
+      weatherTags: const ['Lluvia', 'FrÃ­o', 'Calor', 'Nublado'],
+      priceLevel: 'â‚¬â‚¬',
       description:
-          'Actividad indoor compacta con estética cuidada y conversación fácil después.',
+          'Actividad indoor compacta con estÃ©tica cuidada y conversaciÃ³n fÃ¡cil despuÃ©s.',
+      address: 'Calle Talleres 16',
       latitude: 48.8566,
       longitude: 2.3522,
     ),
@@ -544,9 +572,10 @@ class MockPlacesService {
       location: 'tu zona',
       moodTags: const ['Amigos', 'Fiesta', 'Grupo', 'Sorpresa'],
       weatherTags: const ['Todos'],
-      priceLevel: '€€',
+      priceLevel: 'â‚¬â‚¬',
       description:
-          'Bar con música reconocible, primera ronda sencilla y energía de plan vivo.',
+          'Bar con mÃºsica reconocible, primera ronda sencilla y energÃ­a de plan vivo.',
+      address: 'Calle de la Musica 8',
       latitude: 41.9028,
       longitude: 12.4964,
     ),
@@ -559,7 +588,8 @@ class MockPlacesService {
       weatherTags: const ['Soleado', 'Nublado', 'Calor', 'Todos'],
       priceLevel: 'Gratis',
       description:
-          'Mirador sencillo con aire, pausa fotogÃ©nica y sensaciÃ³n de ciudad propia.',
+          'Mirador sencillo con aire, pausa fotogÃƒÂ©nica y sensaciÃƒÂ³n de ciudad propia.',
+      address: 'Camino del Mirador s/n',
       latitude: 36.7213,
       longitude: -4.4214,
     ),
@@ -572,7 +602,8 @@ class MockPlacesService {
       weatherTags: const ['Todos'],
       priceLevel: 'Gratis',
       description:
-          'Plaza o rincÃ³n de barrio para observar, sentarse un momento y decidir la siguiente parada.',
+          'Plaza o rincÃƒÂ³n de barrio para observar, sentarse un momento y decidir la siguiente parada.',
+      address: 'Plaza del Barrio 1',
       latitude: 37.3891,
       longitude: -5.9845,
     ),
@@ -580,15 +611,15 @@ class MockPlacesService {
 
   static const Map<String, List<String>> _cityAliases = {
     'Madrid': [
-      'Malasaña',
+      'MalasaÃ±a',
       'Chueca',
       'Retiro',
-      'Lavapiés',
+      'LavapiÃ©s',
       'Centro',
       'La Latina',
     ],
     'Barcelona': [
-      'Gràcia',
+      'GrÃ cia',
       'Gracia',
       'Born',
       'Eixample',
@@ -596,10 +627,15 @@ class MockPlacesService {
       'Barceloneta',
     ],
     'Valencia': ['Ruzafa', 'El Carmen', 'Cabanyal', 'Ciutat Vella'],
-    'Sevilla': ['Triana', 'Alameda', 'Santa Cruz', 'Nervión'],
-    'Málaga': ['Centro Histórico', 'Soho', 'Pedregalejo', 'La Malagueta'],
-    'Lisboa': ['Alfama', 'Chiado', 'Bairro Alto', 'Baixa', 'Príncipe Real'],
-    'París': ['Le Marais', 'Montmartre', 'Saint-Germain', 'Canal Saint-Martin'],
+    'Sevilla': ['Triana', 'Alameda', 'Santa Cruz', 'NerviÃ³n'],
+    'MÃ¡laga': ['Centro HistÃ³rico', 'Soho', 'Pedregalejo', 'La Malagueta'],
+    'Lisboa': ['Alfama', 'Chiado', 'Bairro Alto', 'Baixa', 'PrÃ­ncipe Real'],
+    'ParÃ­s': [
+      'Le Marais',
+      'Montmartre',
+      'Saint-Germain',
+      'Canal Saint-Martin',
+    ],
     'Roma': ['Trastevere', 'Monti', 'Prati', 'Centro Storico', 'Testaccio'],
   };
 
@@ -609,82 +645,82 @@ class MockPlacesService {
       latitude: 40.4168,
       longitude: -3.7038,
       freeMuseum: true,
-      cafeName: 'Café Aurora',
+      cafeName: 'CafÃ© Aurora',
       cafeDescription:
-          'Café de especialidad con luz suave, mesas pequeñas y calma de barrio.',
+          'CafÃ© de especialidad con luz suave, mesas pequeÃ±as y calma de barrio.',
       brunchName: 'Brunch Bravo',
       brunchDescription:
-          'Brunch luminoso con tostadas generosas, café serio y mesas compartidas.',
+          'Brunch luminoso con tostadas generosas, cafÃ© serio y mesas compartidas.',
       restaurantName: 'Casa Nori',
       restaurantDescription:
-          'Restaurante acogedor de platos al centro y luz cálida para hablar sin prisa.',
+          'Restaurante acogedor de platos al centro y luz cÃ¡lida para hablar sin prisa.',
       rooftopName: 'Azotea Norte',
       rooftopDescription:
-          'Rooftop urbano con vistas abiertas, cócteles cuidados y atardecer fácil.',
+          'Rooftop urbano con vistas abiertas, cÃ³cteles cuidados y atardecer fÃ¡cil.',
       barName: 'Bar Vinilo',
       barDescription:
-          'Bar con vinilos, mesas altas y energía de primera ronda.',
+          'Bar con vinilos, mesas altas y energÃ­a de primera ronda.',
       museumName: 'Museo Lumen',
       museumDescription:
-          'Museo pequeño de fotografía y diseño con salas tranquilas.',
+          'Museo pequeÃ±o de fotografÃ­a y diseÃ±o con salas tranquilas.',
       parkName: 'Parque Alba',
       parkDescription:
           'Zona verde para caminar, sentarse y bajar revoluciones.',
       viewpointName: 'Mirador del Conde',
       viewpointDescription:
-          'Mirador discreto con tejados, aire y sensación de ciudad abierta.',
-      indoorName: 'Galería Oculta',
+          'Mirador discreto con tejados, aire y sensaciÃ³n de ciudad abierta.',
+      indoorName: 'GalerÃ­a Oculta',
       indoorDescription:
-          'Galería discreta con exposiciones cortas y estética cuidada.',
+          'GalerÃ­a discreta con exposiciones cortas y estÃ©tica cuidada.',
       lowCostName: 'Mercado Central',
       lowCostDescription:
-          'Mercado informal con opciones rápidas, barras compartidas y ambiente real.',
+          'Mercado informal con opciones rÃ¡pidas, barras compartidas y ambiente real.',
       walkName: 'Paseo de las Letras',
       walkDescription:
-          'Paseo corto entre fachadas bonitas, librerías y plazas con vida.',
+          'Paseo corto entre fachadas bonitas, librerÃ­as y plazas con vida.',
       localName: 'Taller del Barrio',
       localDescription:
-          'Experiencia local con artesanía, conversación cercana y recomendaciones reales.',
+          'Experiencia local con artesanÃ­a, conversaciÃ³n cercana y recomendaciones reales.',
     ),
     _CitySeed(
       name: 'Barcelona',
       latitude: 41.3851,
       longitude: 2.1734,
-      cafeName: 'Café Bruma',
+      cafeName: 'CafÃ© Bruma',
       cafeDescription:
-          'Café de esquina con ventanales, bollería fina y ritmo mediterráneo.',
+          'CafÃ© de esquina con ventanales, bollerÃ­a fina y ritmo mediterrÃ¡neo.',
       brunchName: 'Brunch del Born',
       brunchDescription:
-          'Brunch con mesas de madera, huevos buenos y luz de media mañana.',
+          'Brunch con mesas de madera, huevos buenos y luz de media maÃ±ana.',
       restaurantName: 'Mesa Salada',
       restaurantDescription:
           'Restaurante de platos compartidos, producto de mercado y ambiente relajado.',
       rooftopName: 'Terraza Sal',
       rooftopDescription:
-          'Terraza mediterránea para atardecer, cóctel y vistas sobre la ciudad.',
+          'Terraza mediterrÃ¡nea para atardecer, cÃ³ctel y vistas sobre la ciudad.',
       barName: 'Patio Azul',
       barDescription:
           'Patio escondido para una primera bebida sin ruido excesivo.',
-      museumName: 'Museo Bahía',
+      museumName: 'Museo BahÃ­a',
       museumDescription:
-          'Museo de barrio con entrada amable y salas fáciles de recorrer.',
-      parkName: 'Jardín Claro',
-      parkDescription: 'Jardín tranquilo para caminar poco y respirar mucho.',
+          'Museo de barrio con entrada amable y salas fÃ¡ciles de recorrer.',
+      parkName: 'JardÃ­n Claro',
+      parkDescription: 'JardÃ­n tranquilo para caminar poco y respirar mucho.',
       viewpointName: 'Mirador del Mar',
       viewpointDescription:
-          'Punto alto con brisa, horizonte azul y pausa fotogénica.',
+          'Punto alto con brisa, horizonte azul y pausa fotogÃ©nica.',
       indoorName: 'Sala Pixel',
       indoorDescription:
           'Actividad indoor con piezas digitales, luz baja y un punto sorprendente.',
-      lowCostName: 'Plaza del Sábado',
+      lowCostName: 'Plaza del SÃ¡bado',
       lowCostDescription:
-          'Plaza viva con bancos, música callejera y planes sin gasto obligatorio.',
-      walkName: 'Paseo de Gràcia Lento',
+          'Plaza viva con bancos, mÃºsica callejera y planes sin gasto obligatorio.',
+      walkName: 'Paseo de GrÃ cia Lento',
       walkDescription:
-          'Ruta urbana con escaparates, arquitectura y paradas fáciles.',
-      localName: 'Bodega del Veí',
+          'Ruta urbana con escaparates, arquitectura y paradas fÃ¡ciles.',
+      localName: 'Bodega del VeÃ­',
       localDescription:
-          'Bodega local con vermut, tapas sencillas y conversación de barra.',
+          'Bodega local con vermut, tapas sencillas y conversaciÃ³n de barra.',
     ),
     _CitySeed(
       name: 'Valencia',
@@ -692,22 +728,22 @@ class MockPlacesService {
       longitude: -0.3763,
       cafeName: 'Horno Luna',
       cafeDescription:
-          'Horno de barrio con café, dulces y mesas junto al cristal.',
+          'Horno de barrio con cafÃ©, dulces y mesas junto al cristal.',
       brunchName: 'Brunch Naranja',
       brunchDescription:
-          'Brunch fresco con zumos, terraza suave y platos sin complicación.',
+          'Brunch fresco con zumos, terraza suave y platos sin complicaciÃ³n.',
       restaurantName: 'Mesa Plaza',
       restaurantDescription:
-          'Restaurante informal con platos compartidos y buena acústica.',
-      rooftopName: 'Ático Turia',
+          'Restaurante informal con platos compartidos y buena acÃºstica.',
+      rooftopName: 'Ãtico Turia',
       rooftopDescription:
           'Rooftop claro con vistas al cauce, copas frescas y aire de tarde.',
-      barName: 'Sala Neón',
-      barDescription: 'Bar pequeño con DJ, luz roja y primera pista fácil.',
+      barName: 'Sala NeÃ³n',
+      barDescription: 'Bar pequeÃ±o con DJ, luz roja y primera pista fÃ¡cil.',
       museumName: 'Museo del Patio',
       museumDescription:
-          'Museo compacto con diseño, cerámica y una visita sin saturación.',
-      parkName: 'Jardín del Río',
+          'Museo compacto con diseÃ±o, cerÃ¡mica y una visita sin saturaciÃ³n.',
+      parkName: 'JardÃ­n del RÃ­o',
       parkDescription:
           'Parque amplio para caminar con aire, sombra y final abierto.',
       viewpointName: 'Mirador de la Marina',
@@ -715,88 +751,88 @@ class MockPlacesService {
           'Mirador con agua cerca, luz dorada y bancos para alargar.',
       indoorName: 'Cine Boutique',
       indoorDescription:
-          'Cine pequeño con programación rara y butacas cómodas.',
+          'Cine pequeÃ±o con programaciÃ³n rara y butacas cÃ³modas.',
       lowCostName: 'Lonja Viva',
       lowCostDescription:
-          'Ruta low-cost entre mercado, plazas y detalles históricos.',
+          'Ruta low-cost entre mercado, plazas y detalles histÃ³ricos.',
       walkName: 'Paseo Mar',
       walkDescription:
           'Paseo amplio para caminar con aire, luz y final abierto.',
       localName: 'Taller de Ruzafa',
       localDescription:
-          'Espacio local con piezas independientes, charla fácil y recomendaciones de barrio.',
+          'Espacio local con piezas independientes, charla fÃ¡cil y recomendaciones de barrio.',
     ),
     _CitySeed(
       name: 'Sevilla',
       latitude: 37.3891,
       longitude: -5.9845,
-      cafeName: 'Café Azahar',
+      cafeName: 'CafÃ© Azahar',
       cafeDescription:
-          'Café con sombra, mesas de mármol y aroma dulce de mañana.',
+          'CafÃ© con sombra, mesas de mÃ¡rmol y aroma dulce de maÃ±ana.',
       brunchName: 'Brunch Alameda',
       brunchDescription:
           'Brunch informal con tostadas grandes, patio y ritmo de fin de semana.',
       restaurantName: 'Casa Candela',
       restaurantDescription:
-          'Restaurante cálido con platos andaluces al centro y sobremesa fácil.',
+          'Restaurante cÃ¡lido con platos andaluces al centro y sobremesa fÃ¡cil.',
       rooftopName: 'Terraza Giralda',
       rooftopDescription:
-          'Terraza con vistas, luz naranja y sensación de postal viva.',
+          'Terraza con vistas, luz naranja y sensaciÃ³n de postal viva.',
       barName: 'Taberna Mapa',
-      barDescription: 'Taberna local de barra viva y recomendaciones fáciles.',
+      barDescription: 'Taberna local de barra viva y recomendaciones fÃ¡ciles.',
       museumName: 'Museo del Patio',
       museumDescription:
-          'Museo pequeño con salas frescas y recorrido amable bajo techo.',
+          'Museo pequeÃ±o con salas frescas y recorrido amable bajo techo.',
       parkName: 'Plaza Sombra',
       parkDescription:
           'Plaza con sombra, bancos y ambiente local para mirar lento.',
-      viewpointName: 'Mirador del Río',
+      viewpointName: 'Mirador del RÃ­o',
       viewpointDescription:
-          'Punto abierto junto al agua para ver cómo cambia la luz.',
+          'Punto abierto junto al agua para ver cÃ³mo cambia la luz.',
       indoorName: 'Cine Boutique Sur',
       indoorDescription:
-          'Sala indoor con butacas cómodas, cine raro y aire fresco.',
+          'Sala indoor con butacas cÃ³modas, cine raro y aire fresco.',
       lowCostName: 'Ruta de la Sombra',
       lowCostDescription:
           'Plan gratuito de calles frescas, patios visibles y plazas con vida.',
       walkName: 'Paseo de Triana',
       walkDescription:
-          'Paseo con río, azulejos, escaparates y parada dulce opcional.',
+          'Paseo con rÃ­o, azulejos, escaparates y parada dulce opcional.',
       localName: 'Corral de Oficios',
       localDescription:
-          'Experiencia local con talleres, piezas hechas a mano y conversación cercana.',
+          'Experiencia local con talleres, piezas hechas a mano y conversaciÃ³n cercana.',
     ),
     _CitySeed(
-      name: 'Málaga',
+      name: 'MÃ¡laga',
       latitude: 36.7213,
       longitude: -4.4214,
-      cafeName: 'Café Limonar',
+      cafeName: 'CafÃ© Limonar',
       cafeDescription:
-          'Café luminoso con mesas pequeñas, tostadas buenas y aire de costa.',
+          'CafÃ© luminoso con mesas pequeÃ±as, tostadas buenas y aire de costa.',
       brunchName: 'Brunch Soho',
       brunchDescription:
-          'Brunch moderno con murales cerca, platos frescos y café largo.',
+          'Brunch moderno con murales cerca, platos frescos y cafÃ© largo.',
       restaurantName: 'Mesa del Puerto',
       restaurantDescription:
-          'Restaurante de producto sencillo, platos al centro y ambiente mediterráneo.',
+          'Restaurante de producto sencillo, platos al centro y ambiente mediterrÃ¡neo.',
       rooftopName: 'Azotea Alcazaba',
       rooftopDescription:
           'Rooftop con vistas a tejados, piedra antigua y luz dorada.',
       barName: 'Bar Espeto',
       barDescription:
-          'Bar vivo con primeras rondas fáciles y ambiente de encuentro.',
+          'Bar vivo con primeras rondas fÃ¡ciles y ambiente de encuentro.',
       museumName: 'Museo Azul',
       museumDescription:
-          'Museo manejable con arte contemporáneo y salas frescas.',
+          'Museo manejable con arte contemporÃ¡neo y salas frescas.',
       parkName: 'Parque Palmeral',
       parkDescription:
           'Parque con palmeras, sombra y paseo suave hacia el mar.',
       viewpointName: 'Mirador Gibralfaro',
       viewpointDescription:
-          'Mirador alto con bahía, ciudad y final de foto inevitable.',
+          'Mirador alto con bahÃ­a, ciudad y final de foto inevitable.',
       indoorName: 'Sala Refugio',
       indoorDescription:
-          'Actividad indoor fresca para días de calor o lluvia inesperada.',
+          'Actividad indoor fresca para dÃ­as de calor o lluvia inesperada.',
       lowCostName: 'Mercado Claro',
       lowCostDescription:
           'Mercado local para picar barato y sentir la ciudad en movimiento.',
@@ -805,127 +841,127 @@ class MockPlacesService {
           'Ruta junto al puerto con brisa, bancos y final abierto.',
       localName: 'Taller del Soho',
       localDescription:
-          'Experiencia local con arte urbano, tiendas pequeñas y conversación creativa.',
+          'Experiencia local con arte urbano, tiendas pequeÃ±as y conversaciÃ³n creativa.',
     ),
     _CitySeed(
       name: 'Lisboa',
       latitude: 38.7223,
       longitude: -9.1393,
-      cafeName: 'Café Saudade',
+      cafeName: 'CafÃ© Saudade',
       cafeDescription:
-          'Café con azulejos, pasteles, mesas pequeñas y una calma muy lisboeta.',
+          'CafÃ© con azulejos, pasteles, mesas pequeÃ±as y una calma muy lisboeta.',
       brunchName: 'Brunch Chiado',
       brunchDescription:
-          'Brunch luminoso entre cuestas, café fuerte y platos para compartir.',
+          'Brunch luminoso entre cuestas, cafÃ© fuerte y platos para compartir.',
       restaurantName: 'Mesa Alfama',
       restaurantDescription:
-          'Restaurante íntimo con cocina portuguesa, luz baja y platos honestos.',
-      rooftopName: 'Terraço Tejo',
+          'Restaurante Ã­ntimo con cocina portuguesa, luz baja y platos honestos.',
+      rooftopName: 'TerraÃ§o Tejo',
       rooftopDescription:
-          'Rooftop con vistas al río, brisa y cócteles al atardecer.',
+          'Rooftop con vistas al rÃ­o, brisa y cÃ³cteles al atardecer.',
       barName: 'Bar Fado Novo',
       barDescription:
-          'Bar pequeño con música, vino y energía de barrio antiguo.',
+          'Bar pequeÃ±o con mÃºsica, vino y energÃ­a de barrio antiguo.',
       museumName: 'Museu da Luz',
       museumDescription:
-          'Museo compacto con diseño, historia y salas perfectas para lluvia.',
+          'Museo compacto con diseÃ±o, historia y salas perfectas para lluvia.',
       parkName: 'Jardim Claro',
       parkDescription:
-          'Jardín tranquilo para respirar entre cuestas y bancos con sombra.',
+          'JardÃ­n tranquilo para respirar entre cuestas y bancos con sombra.',
       viewpointName: 'Miradouro Alto',
-      viewpointDescription: 'Mirador con tejados rojos, río y pausa larga.',
+      viewpointDescription: 'Mirador con tejados rojos, rÃ­o y pausa larga.',
       indoorName: 'Atelier Baixa',
       indoorDescription:
-          'Actividad indoor con talleres, piezas locales y estética cuidada.',
+          'Actividad indoor con talleres, piezas locales y estÃ©tica cuidada.',
       lowCostName: 'Ruta de Azulejos',
       lowCostDescription:
           'Paseo gratis entre fachadas, miradores y calles con textura.',
       walkName: 'Paseo Alfama',
       walkDescription:
-          'Ruta lenta por callejuelas, ropa tendida y música lejana.',
+          'Ruta lenta por callejuelas, ropa tendida y mÃºsica lejana.',
       localName: 'Tasquita Local',
       localDescription:
           'Experiencia local con barra sencilla, tapas portuguesas y recomendaciones cercanas.',
     ),
     _CitySeed(
-      name: 'París',
+      name: 'ParÃ­s',
       latitude: 48.8566,
       longitude: 2.3522,
-      cafeName: 'Café Lumière',
+      cafeName: 'CafÃ© LumiÃ¨re',
       cafeDescription:
-          'Café pequeño con sillas de terraza, croissant bueno y conversación baja.',
+          'CafÃ© pequeÃ±o con sillas de terraza, croissant bueno y conversaciÃ³n baja.',
       brunchName: 'Brunch Marais',
       brunchDescription:
-          'Brunch cuidado entre galerías, pan dulce y mesas fotogénicas.',
+          'Brunch cuidado entre galerÃ­as, pan dulce y mesas fotogÃ©nicas.',
       restaurantName: 'Bistrot Minuit',
       restaurantDescription:
-          'Bistrot íntimo con platos clásicos, luz cálida y ritmo elegante.',
-      rooftopName: 'Toit Doré',
+          'Bistrot Ã­ntimo con platos clÃ¡sicos, luz cÃ¡lida y ritmo elegante.',
+      rooftopName: 'Toit DorÃ©',
       rooftopDescription:
           'Rooftop con tejados parisinos, copa especial y atardecer de postal.',
       barName: 'Bar Velours',
-      barDescription: 'Bar de terciopelo, música baja y energía sofisticada.',
+      barDescription: 'Bar de terciopelo, mÃºsica baja y energÃ­a sofisticada.',
       museumName: 'Galerie Pluie',
       museumDescription:
-          'Museo/galería perfecto para lluvia, salas breves y mirada lenta.',
-      parkName: 'Jardin Minéral',
+          'Museo/galerÃ­a perfecto para lluvia, salas breves y mirada lenta.',
+      parkName: 'Jardin MinÃ©ral',
       parkDescription: 'Parque urbano con bancos, fuentes y paseo suave.',
-      viewpointName: 'Belvédère Secret',
+      viewpointName: 'BelvÃ©dÃ¨re Secret',
       viewpointDescription:
           'Mirador discreto con tejados, luz azul y ciudad extensa.',
-      indoorName: 'Cinéma Rouge',
+      indoorName: 'CinÃ©ma Rouge',
       indoorDescription:
-          'Sala indie con programación cuidada y refugio perfecto bajo techo.',
+          'Sala indie con programaciÃ³n cuidada y refugio perfecto bajo techo.',
       lowCostName: 'Passage Libre',
       lowCostDescription:
-          'Plan low-cost por pasajes cubiertos, escaparates y rincones clásicos.',
+          'Plan low-cost por pasajes cubiertos, escaparates y rincones clÃ¡sicos.',
       walkName: 'Paseo Canal',
       walkDescription:
-          'Paseo junto al canal con librerías, puentes y cafés cercanos.',
+          'Paseo junto al canal con librerÃ­as, puentes y cafÃ©s cercanos.',
       localName: 'Atelier du Quartier',
       localDescription:
-          'Experiencia local con diseño, talleres pequeños y conversación de barrio.',
+          'Experiencia local con diseÃ±o, talleres pequeÃ±os y conversaciÃ³n de barrio.',
     ),
     _CitySeed(
       name: 'Roma',
       latitude: 41.9028,
       longitude: 12.4964,
-      cafeName: 'Caffè Ombra',
+      cafeName: 'CaffÃ¨ Ombra',
       cafeDescription:
-          'Café italiano de barra rápida, mesas pequeñas y luz antigua.',
+          'CafÃ© italiano de barra rÃ¡pida, mesas pequeÃ±as y luz antigua.',
       brunchName: 'Brunch Monti',
       brunchDescription:
-          'Brunch informal entre calles de piedra, café fuerte y platos sencillos.',
+          'Brunch informal entre calles de piedra, cafÃ© fuerte y platos sencillos.',
       restaurantName: 'Trattoria Sera',
       restaurantDescription:
-          'Trattoria cálida con pasta al centro, vino y conversación larga.',
+          'Trattoria cÃ¡lida con pasta al centro, vino y conversaciÃ³n larga.',
       rooftopName: 'Terrazza Roma',
       rooftopDescription:
-          'Terraza con cúpulas, tejados y una copa que parece escena.',
+          'Terraza con cÃºpulas, tejados y una copa que parece escena.',
       barName: 'Bar Vicolo',
       barDescription:
-          'Bar escondido en callejón con aperitivo, música y ambiente local.',
+          'Bar escondido en callejÃ³n con aperitivo, mÃºsica y ambiente local.',
       museumName: 'Museo Cortile',
       museumDescription:
           'Museo de patio tranquilo con historia, sombra y recorrido manejable.',
       parkName: 'Giardino Quieto',
       parkDescription:
-          'Jardín con pinos, bancos y pausa verde entre monumentos.',
+          'JardÃ­n con pinos, bancos y pausa verde entre monumentos.',
       viewpointName: 'Belvedere Luna',
       viewpointDescription:
-          'Mirador con cúpulas, piedra cálida y final cinematográfico.',
+          'Mirador con cÃºpulas, piedra cÃ¡lida y final cinematogrÃ¡fico.',
       indoorName: 'Sala Mosaico',
       indoorDescription:
           'Actividad indoor con arte, mosaicos y refugio para calor o lluvia.',
       lowCostName: 'Ruta Fontana',
       lowCostDescription:
-          'Plan gratuito entre fuentes, plazas y esquinas históricas.',
+          'Plan gratuito entre fuentes, plazas y esquinas histÃ³ricas.',
       walkName: 'Paseo Trastevere',
       walkDescription:
           'Paseo por calles vivas, ropa tendida, fachadas y barras cercanas.',
       localName: 'Bottega Locale',
       localDescription:
-          'Experiencia local con artesanía, aperitivo y recomendaciones de quien vive allí.',
+          'Experiencia local con artesanÃ­a, aperitivo y recomendaciones de quien vive allÃ­.',
     ),
   ];
 }

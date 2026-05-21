@@ -8,9 +8,10 @@ class ApiConfig {
   static const String localPhysicalDeviceBaseUrl = 'http://192.168.1.X:3000';
 
   // Para produccion cambiar productionBaseUrl y useProductionBackend.
-  static const String productionBaseUrl = 'https://your-production-backend.com';
+  static const String productionBaseUrl =
+      'https://tonight-production-2d53.up.railway.app';
 
-  static const bool useProductionBackend = false;
+  static const bool useProductionBackend = true;
 
   static String get baseUrl {
     if (useProductionBackend) {

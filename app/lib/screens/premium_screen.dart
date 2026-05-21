@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_texts.dart';
 import '../services/analytics_service.dart';
+import '../services/language_service.dart';
+import '../services/haptic_service.dart';
 import '../services/premium_service.dart';
 import '../widgets/glass_panel.dart';
 import '../widgets/primary_cta_button.dart';
+import '../widgets/tonight_app_bar.dart';
 
 class PremiumScreen extends StatefulWidget {
   const PremiumScreen({super.key});
@@ -65,6 +69,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
   }
 
   Future<void> _selectPlan(String plan) async {
+    HapticService.selectionClick();
     setState(() {
       selectedPlan = plan;
     });
@@ -74,7 +79,14 @@ class _PremiumScreenState extends State<PremiumScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+
     return Scaffold(
+      appBar: TonightAppBar(
+        title: texts.premium,
+        backIcon: Icons.close_rounded,
+        backTooltip: 'Cerrar',
+      ),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -90,8 +102,6 @@ class _PremiumScreenState extends State<PremiumScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 26),
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
@@ -101,7 +111,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                         _HeroBadge(),
                         const SizedBox(height: 18),
                         Text(
-                          'Tonight Premium',
+                          texts.premiumTitle,
                           style: Theme.of(context).textTheme.displaySmall
                               ?.copyWith(
                                 color: Colors.white,
@@ -112,7 +122,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Planes ilimitados para cualquier momento',
+                          texts.premiumSubtitle,
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.76),
@@ -128,7 +138,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                         ),
                         const SizedBox(height: 26),
                         Text(
-                          'Incluido en Premium',
+                          texts.premiumIncluded,
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
                                 color: Colors.white,
@@ -165,6 +175,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
   }
 
   void _showComingSoon() {
+    HapticService.mediumImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         behavior: SnackBarBehavior.floating,
@@ -175,6 +186,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
   }
 
   Future<void> _continueFree() async {
+    HapticService.lightImpact();
     await const AnalyticsService().logPremiumContinueFree();
     if (!mounted) {
       return;
@@ -464,29 +476,6 @@ class _SecondaryButton extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BackButton extends StatelessWidget {
-  const _BackButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
-        child: const SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
         ),
       ),
     );

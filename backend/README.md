@@ -2,7 +2,7 @@
 
 Backend minimo de Node.js + Express para generar planes de Tonight.
 
-Si `OPENAI_API_KEY` esta configurada, el endpoint `/generate-plan` usa OpenAI desde el backend. Si no hay clave o la llamada falla, devuelve un plan mock compatible con `PlanModel` de Flutter.
+Si `OPENAI_API_KEY` esta configurada, los endpoints `/generate-plan` y `/generate-plan-from-chat` usan OpenAI desde el backend. Si no hay clave o la llamada falla, devuelven un plan mock compatible con `PlanModel` de Flutter.
 
 ## Arrancar
 
@@ -42,11 +42,25 @@ Body esperado:
   "moment": "Esta noche",
   "location": "Madrid",
   "weather": "Soleado",
-  "groupSize": "2"
+  "groupSize": "2",
+  "language": "es"
 }
 ```
 
-`groupSize` es opcional.
+`groupSize` y `language` son opcionales. Si `language` es `"en"`, el plan se genera en ingles. Si es `"es"` o falta, se genera en espanol. Las claves JSON de respuesta no cambian.
+
+### POST /generate-plan-from-chat
+
+Body esperado:
+
+```json
+{
+  "message": "Estoy en Madrid, tengo 20 euros, voy con mi mujer y quiero un plan por esta zona",
+  "language": "es"
+}
+```
+
+`language` es opcional y sigue la misma regla: `"en"` para ingles, `"es"` o ausente para espanol. El backend interpreta el texto libre, extrae mood, presupuesto, momento, ubicacion y compania de forma aproximada, y devuelve un `PlanModel` compatible. No expone la API key y no inventa direcciones exactas.
 
 ## Deploy en Railway
 

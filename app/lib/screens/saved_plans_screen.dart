@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_texts.dart';
 import '../models/plan_model.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/local_plan_storage.dart';
+import '../utils/text_sanitizer.dart';
+import '../utils/tonight_page_route.dart';
 import '../widgets/app_empty_state.dart';
 import '../widgets/glass_panel.dart';
+import '../widgets/tonight_app_bar.dart';
 import 'plan_detail_screen.dart';
 
 class SavedPlansScreen extends StatefulWidget {
@@ -64,7 +70,10 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+
     return Scaffold(
+      appBar: widget.showBackButton ? TonightAppBar(title: texts.saved) : null,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -80,13 +89,9 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (widget.showBackButton) ...[
-                  _BackButton(onPressed: () => Navigator.of(context).pop()),
-                  const SizedBox(height: 26),
-                ] else
-                  const SizedBox(height: 10),
+                if (!widget.showBackButton) const SizedBox(height: 10),
                 Text(
-                  'Guardados',
+                  texts.saved,
                   style: Theme.of(context).textTheme.displaySmall?.copyWith(
                     color: Colors.white,
                     fontSize: 40,
@@ -105,6 +110,7 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
                 ),
                 const SizedBox(height: 24),
                 _SearchField(
+                  hintText: texts.searchPlans,
                   controller: searchController,
                   onChanged: (value) {
                     setState(() {
@@ -114,9 +120,11 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
                 ),
                 const SizedBox(height: 14),
                 _FilterChips(
+                  texts: texts,
                   filters: filters,
                   selectedFilter: selectedFilter,
                   onSelected: (filter) {
+                    HapticService.selectionClick();
                     setState(() {
                       selectedFilter = filter;
                     });
@@ -152,7 +160,7 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
                       return SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: _buildSavedPlanSections(viewData),
+                          children: _buildSavedPlanSections(viewData, texts),
                         ),
                       );
                     },
@@ -167,15 +175,85 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
   }
 
   Future<void> _openPlanDetail(PlanModel plan) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => PlanDetailScreen(plan: plan)),
-    );
+    HapticService.lightImpact();
+    await Navigator.of(
+      context,
+    ).push(tonightPageRoute<void>((_) => PlanDetailScreen(plan: plan)));
 
     if (!mounted) {
       return;
     }
 
     _refreshSavedPlans();
+  }
+
+  Future<void> _confirmDeletePlan(
+    PlanModel plan,
+    _SavedPlanDeleteScope scope,
+  ) async {
+    HapticService.mediumImpact();
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF17131D),
+        title: const Text(
+          'Borrar plan',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+        ),
+        content: Text(
+          _deleteDialogMessage(scope),
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    HapticService.heavyImpact();
+    await LocalPlanStorage.removePlan(
+      plan.id,
+      fromHistory:
+          scope == _SavedPlanDeleteScope.history ||
+          scope == _SavedPlanDeleteScope.all,
+      fromFavorites:
+          scope == _SavedPlanDeleteScope.favorites ||
+          scope == _SavedPlanDeleteScope.all,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    _refreshSavedPlans();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Color(0xFF17131D),
+        content: Text('Plan borrado'),
+      ),
+    );
+  }
+
+  String _deleteDialogMessage(_SavedPlanDeleteScope scope) {
+    return switch (scope) {
+      _SavedPlanDeleteScope.history =>
+        'Se eliminará este plan del historial de este dispositivo.',
+      _SavedPlanDeleteScope.favorites =>
+        'Se eliminará este plan de favoritos de este dispositivo.',
+      _SavedPlanDeleteScope.all =>
+        'Se eliminará este plan de historial y favoritos de este dispositivo.',
+    };
   }
 
   _SavedPlansViewData _filterSavedPlans(_SavedPlansData savedPlans) {
@@ -208,7 +286,10 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
     );
   }
 
-  List<Widget> _buildSavedPlanSections(_SavedPlansViewData viewData) {
+  List<Widget> _buildSavedPlanSections(
+    _SavedPlansViewData viewData,
+    AppTextValues texts,
+  ) {
     if (viewData.filtersAreActive) {
       if (viewData.combined.isEmpty) {
         return const [
@@ -222,10 +303,12 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
 
       return [
         _SavedSection(
-          title: 'Resultados',
+          title: texts.results,
           icon: Icons.travel_explore_rounded,
           plans: viewData.combined,
           onPlanTap: _openPlanDetail,
+          onPlanDelete: (plan) =>
+              _confirmDeletePlan(plan, _SavedPlanDeleteScope.all),
           showEmptyState: false,
         ),
       ];
@@ -233,17 +316,21 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
 
     return [
       _SavedSection(
-        title: 'Historial',
+        title: texts.history,
         icon: Icons.history_rounded,
         plans: viewData.history,
         onPlanTap: _openPlanDetail,
+        onPlanDelete: (plan) =>
+            _confirmDeletePlan(plan, _SavedPlanDeleteScope.history),
       ),
       const SizedBox(height: 30),
       _SavedSection(
-        title: 'Favoritos',
+        title: texts.favorites,
         icon: Icons.favorite_rounded,
         plans: viewData.favorites,
         onPlanTap: _openPlanDetail,
+        onPlanDelete: (plan) =>
+            _confirmDeletePlan(plan, _SavedPlanDeleteScope.favorites),
       ),
     ];
   }
@@ -260,6 +347,7 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
       plan.location,
       plan.moment,
       plan.vibe,
+      ...plan.places.map((place) => '${place.name} ${place.address ?? ''}'),
     ].map(_normalize).join(' ');
 
     return searchableText.contains(normalizedQuery);
@@ -298,7 +386,7 @@ class _SavedPlansScreenState extends State<SavedPlansScreen> {
   }
 
   String _normalize(String value) {
-    return value.trim().toLowerCase();
+    return TextSanitizer.clean(value).trim().toLowerCase();
   }
 }
 
@@ -323,9 +411,16 @@ class _SavedPlansViewData {
   final bool filtersAreActive;
 }
 
-class _SearchField extends StatelessWidget {
-  const _SearchField({required this.controller, required this.onChanged});
+enum _SavedPlanDeleteScope { history, favorites, all }
 
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.hintText,
+    required this.controller,
+    required this.onChanged,
+  });
+
+  final String hintText;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
 
@@ -339,7 +434,7 @@ class _SearchField extends StatelessWidget {
       cursorColor: const Color(0xFFE8B66B),
       decoration: InputDecoration(
         prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFE8B66B)),
-        hintText: 'Buscar planes...',
+        hintText: hintText,
         hintStyle: TextStyle(
           color: Colors.white.withValues(alpha: 0.42),
           fontWeight: FontWeight.w600,
@@ -365,11 +460,13 @@ class _SearchField extends StatelessWidget {
 
 class _FilterChips extends StatelessWidget {
   const _FilterChips({
+    required this.texts,
     required this.filters,
     required this.selectedFilter,
     required this.onSelected,
   });
 
+  final AppTextValues texts;
   final List<String> filters;
   final String selectedFilter;
   final ValueChanged<String> onSelected;
@@ -407,7 +504,7 @@ class _FilterChips extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    filter,
+                    texts.filterLabel(filter),
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       color: isSelected
                           ? const Color(0xFF100D10)
@@ -431,6 +528,7 @@ class _SavedSection extends StatelessWidget {
     required this.icon,
     required this.plans,
     required this.onPlanTap,
+    required this.onPlanDelete,
     this.showEmptyState = true,
   });
 
@@ -438,6 +536,7 @@ class _SavedSection extends StatelessWidget {
   final IconData icon;
   final List<PlanModel> plans;
   final ValueChanged<PlanModel> onPlanTap;
+  final ValueChanged<PlanModel> onPlanDelete;
   final bool showEmptyState;
 
   @override
@@ -476,7 +575,11 @@ class _SavedSection extends StatelessWidget {
           ...plans.map(
             (plan) => Padding(
               padding: const EdgeInsets.only(bottom: 14),
-              child: _SavedPlanCard(plan: plan, onTap: () => onPlanTap(plan)),
+              child: _SavedPlanCard(
+                plan: plan,
+                onTap: () => onPlanTap(plan),
+                onDelete: () => onPlanDelete(plan),
+              ),
             ),
           ),
       ],
@@ -485,10 +588,15 @@ class _SavedSection extends StatelessWidget {
 }
 
 class _SavedPlanCard extends StatelessWidget {
-  const _SavedPlanCard({required this.plan, required this.onTap});
+  const _SavedPlanCard({
+    required this.plan,
+    required this.onTap,
+    required this.onDelete,
+  });
 
   final PlanModel plan;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -526,12 +634,20 @@ class _SavedPlanCard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      plan.title,
+                      TextSanitizer.clean(plan.title),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w900,
                         height: 1.1,
                       ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Borrar plan',
+                    onPressed: onDelete,
+                    icon: Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.white.withValues(alpha: 0.52),
                     ),
                   ),
                   Icon(
@@ -608,7 +724,7 @@ class _MiniTag extends StatelessWidget {
           Icon(icon, color: const Color(0xFFF1D7A6), size: 14),
           const SizedBox(width: 6),
           Text(
-            '$label: $value',
+            '$label: ${TextSanitizer.clean(value)}',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: const Color(0xFFF1D7A6),
               fontWeight: FontWeight.w800,
@@ -679,29 +795,6 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BackButton extends StatelessWidget {
-  const _BackButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
-        child: const SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
         ),
       ),
     );

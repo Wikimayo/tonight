@@ -5,15 +5,24 @@ import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../core/constants/app_texts.dart';
+import '../models/place_model.dart';
 import '../models/plan_model.dart';
 import '../services/analytics_service.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/local_plan_storage.dart';
+import '../services/maps_launcher_service.dart';
+import '../utils/plan_text_formatter.dart';
+import '../utils/text_sanitizer.dart';
+import '../utils/tonight_page_route.dart';
 import '../widgets/glass_panel.dart';
 import '../widgets/plan_map_preview.dart';
 import '../widgets/plan_route_preview.dart';
 import '../widgets/plan_source_debug_chip.dart';
 import '../widgets/primary_cta_button.dart';
 import '../widgets/share_plan_card.dart';
+import '../widgets/tonight_app_bar.dart';
 import 'plan_setup_screen.dart';
 
 class PlanDetailScreen extends StatefulWidget {
@@ -27,7 +36,9 @@ class PlanDetailScreen extends StatefulWidget {
 
 class _PlanDetailScreenState extends State<PlanDetailScreen> {
   final ScreenshotController _shareImageController = ScreenshotController();
+  final MapsLauncherService _mapsLauncherService = const MapsLauncherService();
   bool isFavorite = false;
+  bool isInHistory = false;
   bool isCheckingFavorite = true;
   bool isSharingImage = false;
 
@@ -41,7 +52,10 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+
     return Scaffold(
+      appBar: TonightAppBar(title: texts.planDetailTitle),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -57,15 +71,13 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _BackButton(onPressed: () => Navigator.of(context).pop()),
-                const SizedBox(height: 24),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          plan.title,
+                          TextSanitizer.clean(plan.title),
                           style: Theme.of(context).textTheme.displaySmall
                               ?.copyWith(
                                 color: Colors.white,
@@ -80,7 +92,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          plan.description,
+                          TextSanitizer.clean(plan.description),
                           style: Theme.of(context).textTheme.bodyLarge
                               ?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.70),
@@ -132,12 +144,18 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
                               _ContextTag(
                                 icon: Icons.diversity_3_rounded,
                                 label: 'Grupo',
-                                value: plan.groupSize!,
+                                value: TextSanitizer.clean(plan.groupSize!),
                               ),
                           ],
                         ),
                         const SizedBox(height: 28),
                         PlanMapPreview(places: plan.places),
+                        const SizedBox(height: 12),
+                        _SecondaryButton(
+                          label: 'Abrir ruta',
+                          icon: Icons.map_rounded,
+                          onPressed: _openRouteInMaps,
+                        ),
                         const SizedBox(height: 24),
                         PlanRoutePreview(plan: plan),
                         const SizedBox(height: 24),
@@ -158,9 +176,17 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
                         ),
                         const SizedBox(height: 16),
                         ...plan.itinerarySteps.indexed.map((entry) {
+                          final place = entry.$1 < plan.places.length
+                              ? plan.places[entry.$1]
+                              : null;
+
                           return _ItineraryStep(
                             number: entry.$1 + 1,
-                            text: entry.$2,
+                            place: place,
+                            onOpenPlace: place == null
+                                ? null
+                                : () => _openPlaceInMaps(place),
+                            text: TextSanitizer.clean(entry.$2),
                           );
                         }),
                         const SizedBox(height: 24),
@@ -169,29 +195,41 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
                   ),
                 ),
                 PrimaryCtaButton(
-                  label: 'Usar este plan',
+                  label: texts.useThisPlan,
                   onPressed: _usePlanAsBase,
                 ),
                 const SizedBox(height: 12),
                 _SecondaryButton(
-                  label: 'Compartir texto',
+                  label: texts.shareText,
                   icon: Icons.ios_share_rounded,
                   onPressed: _shareText,
                 ),
                 const SizedBox(height: 12),
                 _SecondaryButton(
                   label: isSharingImage
-                      ? 'Preparando imagen...'
-                      : 'Compartir imagen',
+                      ? texts.preparingImage
+                      : texts.shareImage,
                   icon: Icons.ios_share_rounded,
                   onPressed: isSharingImage ? null : _shareImage,
                 ),
-                if (!isCheckingFavorite && !isFavorite) ...[
+                if (!isCheckingFavorite) ...[
                   const SizedBox(height: 12),
                   _SecondaryButton(
-                    label: 'Guardar favorito',
-                    icon: Icons.favorite_border_rounded,
-                    onPressed: _saveFavorite,
+                    label: isFavorite
+                        ? 'Favorito guardado'
+                        : 'Guardar favorito',
+                    icon: isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    onPressed: _toggleFavorite,
+                  ),
+                ],
+                if (!isCheckingFavorite && (isFavorite || isInHistory)) ...[
+                  const SizedBox(height: 12),
+                  _SecondaryButton(
+                    label: 'Borrar plan',
+                    icon: Icons.delete_outline_rounded,
+                    onPressed: _confirmDeletePlan,
                   ),
                 ],
               ],
@@ -203,34 +241,100 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
   }
 
   Future<void> _loadFavoriteState() async {
-    final savedAsFavorite = await LocalPlanStorage.isFavorite(plan);
+    final results = await Future.wait([
+      LocalPlanStorage.isFavorite(plan),
+      LocalPlanStorage.isInHistory(plan),
+    ]);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      isFavorite = results[0];
+      isInHistory = results[1];
+      isCheckingFavorite = false;
+    });
+  }
+
+  Future<void> _toggleFavorite() async {
+    HapticService.mediumImpact();
+    final savedAsFavorite = await LocalPlanStorage.toggleFavorite(plan);
     if (!mounted) {
       return;
     }
 
     setState(() {
       isFavorite = savedAsFavorite;
-      isCheckingFavorite = false;
     });
+    if (savedAsFavorite) {
+      await const AnalyticsService().logPlanSavedFavorite(mood: plan.mood);
+    }
+    _showSnackBar(
+      savedAsFavorite
+          ? 'Plan guardado en favoritos'
+          : 'Plan quitado de favoritos',
+    );
   }
 
-  Future<void> _saveFavorite() async {
-    await LocalPlanStorage.addToFavorites(plan);
+  Future<void> _confirmDeletePlan() async {
+    HapticService.mediumImpact();
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF17131D),
+        title: const Text(
+          'Borrar plan',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+        ),
+        content: Text(
+          _deleteDialogMessage,
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    HapticService.heavyImpact();
+    await LocalPlanStorage.removePlan(
+      plan.id,
+      fromHistory: isInHistory,
+      fromFavorites: isFavorite,
+    );
     if (!mounted) {
       return;
     }
 
-    setState(() {
-      isFavorite = true;
-    });
-    await const AnalyticsService().logPlanSavedFavorite(mood: plan.mood);
-    _showSnackBar('Plan guardado en favoritos');
+    Navigator.of(context).pop(true);
+  }
+
+  String get _deleteDialogMessage {
+    if (isFavorite && isInHistory) {
+      return 'Se eliminará de historial y favoritos de este dispositivo.';
+    }
+    if (isFavorite) {
+      return 'Se eliminará de favoritos de este dispositivo.';
+    }
+    return 'Se eliminará del historial de este dispositivo.';
   }
 
   void _usePlanAsBase() {
+    HapticService.lightImpact();
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlanSetupScreen(
+      tonightPageRoute<void>(
+        (_) => PlanSetupScreen(
           initialMood: plan.mood,
           initialLocation: plan.location,
           initialMoment: plan.moment,
@@ -245,6 +349,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
   }
 
   Future<void> _shareText() async {
+    HapticService.mediumImpact();
     try {
       final result = await SharePlus.instance.share(
         ShareParams(subject: 'Mi plan en Tonight', text: _shareTextContent),
@@ -269,6 +374,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
   }
 
   Future<void> _shareImage() async {
+    HapticService.mediumImpact();
     setState(() {
       isSharingImage = true;
     });
@@ -280,7 +386,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
           child: SharePlanCard(plan: plan),
         ),
         context: context,
-        pixelRatio: 3,
+        pixelRatio: 2,
         targetSize: SharePlanCard.storySize,
       );
       final temporaryDirectory = await getTemporaryDirectory();
@@ -293,7 +399,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
       final result = await SharePlus.instance.share(
         ShareParams(
           subject: 'Mi plan en Tonight',
-          text: 'Mi plan en Tonight: ${plan.title}',
+          text: 'Mi plan en Tonight: ${TextSanitizer.clean(plan.title)}',
           files: [XFile(imageFile.path, mimeType: 'image/png')],
           fileNameOverrides: const ['tonight-plan.png'],
         ),
@@ -323,30 +429,31 @@ class _PlanDetailScreenState extends State<PlanDetailScreen> {
     }
   }
 
-  String get _shareTextContent {
-    final itinerary = plan.itinerarySteps.indexed
-        .map((entry) => '${entry.$1 + 1}. ${entry.$2}')
-        .join('\n');
+  Future<void> _openRouteInMaps() async {
+    HapticService.mediumImpact();
+    final didOpen = await _mapsLauncherService.openRoute(plan.places);
+    if (!mounted) {
+      return;
+    }
 
-    return '''
-Mi plan en Tonight
-
-${plan.title}
-${plan.description}
-
-Mood: ${plan.mood}
-Ubicación: ${plan.location}
-Momento: ${plan.moment}
-Clima: ${plan.weather}
-Coste estimado: ${plan.estimatedCost}
-Duración estimada: ${plan.estimatedDuration}
-Distancia aproximada: ${plan.estimatedDistance}
-${plan.groupSize == null ? '' : 'Tamaño del grupo: ${plan.groupSize}\n'}
-
-Itinerario:
-$itinerary
-''';
+    if (!didOpen) {
+      _showMapsError();
+    }
   }
+
+  Future<void> _openPlaceInMaps(PlaceModel place) async {
+    HapticService.mediumImpact();
+    final didOpen = await _mapsLauncherService.openPlace(place);
+    if (!mounted) {
+      return;
+    }
+
+    if (!didOpen) {
+      _showMapsError();
+    }
+  }
+
+  String get _shareTextContent => PlanTextFormatter.shareText(plan);
 
   void _showShareError() {
     _showSnackBar('No se pudo compartir el plan. Inténtalo de nuevo.');
@@ -354,6 +461,10 @@ $itinerary
 
   void _showImageShareError() {
     _showSnackBar('No se pudo preparar la imagen. Inténtalo de nuevo.');
+  }
+
+  void _showMapsError() {
+    _showSnackBar('No se pudo abrir Google Maps.');
   }
 
   void _showSnackBar(String message) {
@@ -444,10 +555,17 @@ class _InsightPanel extends StatelessWidget {
 }
 
 class _ItineraryStep extends StatelessWidget {
-  const _ItineraryStep({required this.number, required this.text});
+  const _ItineraryStep({
+    required this.number,
+    required this.text,
+    this.place,
+    this.onOpenPlace,
+  });
 
   final int number;
   final String text;
+  final PlaceModel? place;
+  final VoidCallback? onOpenPlace;
 
   @override
   Widget build(BuildContext context) {
@@ -478,16 +596,76 @@ class _ItineraryStep extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                text,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.72),
-                  fontWeight: FontWeight.w700,
-                  height: 1.42,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (place != null) ...[
+                    Text(
+                      TextSanitizer.clean(place!.name),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
+                    ),
+                    if (TextSanitizer.cleanOptional(place!.address) !=
+                        null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        TextSanitizer.clean(place!.address!),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(
+                            0xFFE8B66B,
+                          ).withValues(alpha: 0.78),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                  ],
+                  Text(
+                    text,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontWeight: FontWeight.w700,
+                      height: 1.42,
+                    ),
+                  ),
+                  if (place != null) ...[
+                    const SizedBox(height: 12),
+                    _MapsTextButton(onPressed: onOpenPlace),
+                  ],
+                ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapsTextButton extends StatelessWidget {
+  const _MapsTextButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          foregroundColor: const Color(0xFFE8B66B),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: const Icon(Icons.map_rounded, size: 17),
+        label: const Text(
+          'Ver en Maps',
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
     );
@@ -543,29 +721,6 @@ class _SecondaryButton extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BackButton extends StatelessWidget {
-  const _BackButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
-        child: const SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
         ),
       ),
     );

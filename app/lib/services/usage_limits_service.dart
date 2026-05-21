@@ -5,7 +5,7 @@ import 'premium_service.dart';
 class UsageLimitsService {
   const UsageLimitsService._();
 
-  static const int freeDailyPlanLimit = 5;
+  static const int freeDailyPlanLimit = 2;
   static const String _usageDateKey = 'usageLimitsDate';
   static const String _usageCountKey = 'usageLimitsPlanCount';
 

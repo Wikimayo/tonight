@@ -8,6 +8,7 @@ class WeatherService {
   const WeatherService._();
 
   static const String automaticWeather = 'Automático';
+  static const Duration requestTimeout = Duration(seconds: 6);
   static Future<String> Function()? debugAutomaticWeatherResolver;
 
   static Future<String> getAutomaticWeather() async {
@@ -25,7 +26,7 @@ class WeatherService {
         'timezone': 'auto',
       });
 
-      final response = await http.get(uri).timeout(const Duration(seconds: 8));
+      final response = await http.get(uri).timeout(requestTimeout);
       if (response.statusCode != 200) {
         return automaticWeather;
       }

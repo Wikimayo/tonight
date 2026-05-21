@@ -5,17 +5,27 @@ import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../core/constants/app_texts.dart';
+import '../models/place_model.dart';
 import '../models/plan_model.dart';
 import '../services/analytics_service.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/local_plan_storage.dart';
+import '../services/maps_launcher_service.dart';
 import '../services/plan_generation_service.dart';
 import '../services/usage_limits_service.dart';
+import '../utils/plan_text_formatter.dart';
+import '../utils/text_sanitizer.dart';
+import '../utils/tonight_page_route.dart';
 import '../widgets/glass_panel.dart';
 import '../widgets/plan_map_preview.dart';
 import '../widgets/plan_route_preview.dart';
 import '../widgets/plan_source_debug_chip.dart';
 import '../widgets/primary_cta_button.dart';
 import '../widgets/share_plan_card.dart';
+import '../widgets/tonight_app_bar.dart';
+import 'plan_setup_screen.dart';
 import 'premium_screen.dart';
 
 class PlanResultScreen extends StatefulWidget {
@@ -31,21 +41,36 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
   final ScreenshotController _shareImageController = ScreenshotController();
   final PlanGenerationService _planGenerationService =
       const PlanGenerationService();
-  late PlanModel plan;
+  final MapsLauncherService _mapsLauncherService = const MapsLauncherService();
+  late final PageController _pageController;
+  late final List<PlanModel> plans;
+  int currentIndex = 0;
   bool isFavorite = false;
   bool isSharingImage = false;
   bool isGeneratingAnother = false;
 
+  PlanModel get plan => plans[currentIndex.clamp(0, plans.length - 1)];
+
   @override
   void initState() {
     super.initState();
-    plan = widget.plan;
+    plans = [widget.plan];
+    _pageController = PageController();
     _persistGeneratedPlan(plan);
   }
 
   @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+
     return Scaffold(
+      appBar: TonightAppBar(title: texts.planReadyTitle),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -62,153 +87,38 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 420),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      final slideAnimation = Tween<Offset>(
-                        begin: const Offset(0.04, 0),
-                        end: Offset.zero,
-                      ).animate(animation);
+                  child: PageView.builder(
+                    controller: _pageController,
+                    physics: isGeneratingAnother
+                        ? const NeverScrollableScrollPhysics()
+                        : const BouncingScrollPhysics(),
+                    itemCount: plans.length + 1,
+                    onPageChanged: _handlePageChanged,
+                    itemBuilder: (context, index) {
+                      if (index >= plans.length) {
+                        return _SwipeGeneratePage(
+                          texts: texts,
+                          isLoading: isGeneratingAnother,
+                          onGenerate: isGeneratingAnother
+                              ? null
+                              : () => _generateAnotherPlan(fromSwipe: true),
+                        );
+                      }
 
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: slideAnimation,
-                          child: child,
-                        ),
+                      final visiblePlan = plans[index];
+                      return SingleChildScrollView(
+                        key: PageStorageKey('plan-result-${visiblePlan.id}'),
+                        child: _buildPlanContent(visiblePlan, texts),
                       );
                     },
-                    child: SingleChildScrollView(
-                      key: ValueKey(plan.id),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Tu plan está listo',
-                            style: Theme.of(context).textTheme.displaySmall
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.02,
-                                ),
-                          ),
-                          PlanSourceDebugChip(
-                            source: plan.source,
-                            reason: plan.reason,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            '${plan.location} · ${plan.moment} · ${plan.mood}',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.70),
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.35,
-                                ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Mañana · Tarde · Noche',
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(
-                                  color: const Color(0xFFE8B66B),
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.4,
-                                ),
-                          ),
-                          const SizedBox(height: 18),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              _ContextTag(
-                                icon: Icons.location_on_rounded,
-                                label: 'Ubicación',
-                                value: plan.location,
-                              ),
-                              _ContextTag(
-                                icon: Icons.wb_twilight_rounded,
-                                label: 'Momento',
-                                value: plan.moment,
-                              ),
-                              _ContextTag(
-                                icon: Icons.auto_awesome_rounded,
-                                label: 'Mood',
-                                value: plan.mood,
-                              ),
-                              _ContextTag(
-                                icon: Icons.payments_rounded,
-                                label: 'Presupuesto',
-                                value: plan.budget,
-                              ),
-                              _ContextTag(
-                                icon: Icons.schedule_rounded,
-                                label: 'Tiempo',
-                                value: plan.time,
-                              ),
-                              _ContextTag(
-                                icon: Icons.near_me_rounded,
-                                label: 'Distancia',
-                                value: plan.distance,
-                              ),
-                              _ContextTag(
-                                icon: Icons.cloud_rounded,
-                                label: 'Clima',
-                                value: plan.weather,
-                              ),
-                              if (plan.groupSize != null)
-                                _ContextTag(
-                                  icon: Icons.diversity_3_rounded,
-                                  label: 'Grupo',
-                                  value: plan.groupSize!,
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 28),
-                          _PlanCard(plan: plan),
-                          const SizedBox(height: 24),
-                          PlanMapPreview(places: plan.places),
-                          const SizedBox(height: 24),
-                          PlanRoutePreview(plan: plan),
-                          const SizedBox(height: 24),
-                          _InsightPanel(
-                            title: 'Por qué te pega',
-                            text: plan.whyItFits,
-                          ),
-                          const SizedBox(height: 14),
-                          _InsightPanel(
-                            title: 'Vibe del plan',
-                            text: plan.vibe,
-                          ),
-                          const SizedBox(height: 30),
-                          Text(
-                            'Itinerario',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                          ),
-                          const SizedBox(height: 16),
-                          ...plan.itinerarySteps.indexed.map((entry) {
-                            final index = entry.$1;
-                            final step = entry.$2;
-
-                            return _ItineraryStep(
-                              number: '${index + 1}',
-                              title: _stepTitleFor(index),
-                              description: step,
-                            );
-                          }),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                _PlanPagerIndicator(
+                  currentIndex: currentIndex,
+                  count: plans.length,
+                ),
+                const SizedBox(height: 12),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 220),
                   child: isGeneratingAnother
@@ -221,26 +131,30 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
                 ),
                 _FavoriteButton(
                   isFavorite: isFavorite,
-                  onPressed: _saveFavorite,
+                  onPressed: _toggleFavorite,
                 ),
                 const SizedBox(height: 12),
-                PrimaryCtaButton(
-                  label: 'Compartir plan',
-                  onPressed: _sharePlan,
-                ),
+                PrimaryCtaButton(label: texts.sharePlan, onPressed: _sharePlan),
                 const SizedBox(height: 12),
                 _SecondaryButton(
                   label: isSharingImage
-                      ? 'Preparando imagen...'
-                      : 'Compartir imagen',
+                      ? texts.preparingImage
+                      : texts.shareImage,
                   onPressed: isSharingImage ? null : _sharePlanImage,
                 ),
                 const SizedBox(height: 12),
                 _SecondaryButton(
+                  label: texts.editCriteria,
+                  onPressed: _editCriteria,
+                ),
+                const SizedBox(height: 12),
+                _SecondaryButton(
                   label: isGeneratingAnother
-                      ? 'Generando otro...'
-                      : 'Generar otro',
-                  onPressed: isGeneratingAnother ? null : _generateAnotherPlan,
+                      ? texts.generatingAnother
+                      : texts.generateAnother,
+                  onPressed: isGeneratingAnother
+                      ? null
+                      : () => _generateAnotherPlan(),
                 ),
               ],
             ),
@@ -248,6 +162,158 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPlanContent(PlanModel visiblePlan, AppTextValues texts) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tu plan está listo',
+          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+            color: Colors.white,
+            fontSize: 40,
+            fontWeight: FontWeight.w900,
+            height: 1.02,
+          ),
+        ),
+        PlanSourceDebugChip(
+          source: visiblePlan.source,
+          reason: visiblePlan.reason,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '${TextSanitizer.clean(visiblePlan.location)} · '
+          '${TextSanitizer.clean(visiblePlan.moment)} · '
+          '${TextSanitizer.clean(visiblePlan.mood)}',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: Colors.white.withValues(alpha: 0.70),
+            fontWeight: FontWeight.w700,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Mañana · Tarde · Noche',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: const Color(0xFFE8B66B),
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _ContextTag(
+              icon: Icons.location_on_rounded,
+              label: 'Ubicación',
+              value: visiblePlan.location,
+            ),
+            _ContextTag(
+              icon: Icons.wb_twilight_rounded,
+              label: 'Momento',
+              value: visiblePlan.moment,
+            ),
+            _ContextTag(
+              icon: Icons.auto_awesome_rounded,
+              label: 'Mood',
+              value: visiblePlan.mood,
+            ),
+            _ContextTag(
+              icon: Icons.payments_rounded,
+              label: 'Presupuesto',
+              value: visiblePlan.budget,
+            ),
+            _ContextTag(
+              icon: Icons.schedule_rounded,
+              label: 'Tiempo',
+              value: visiblePlan.time,
+            ),
+            _ContextTag(
+              icon: Icons.near_me_rounded,
+              label: 'Distancia',
+              value: visiblePlan.distance,
+            ),
+            _ContextTag(
+              icon: Icons.cloud_rounded,
+              label: 'Clima',
+              value: visiblePlan.weather,
+            ),
+            if (visiblePlan.groupSize != null)
+              _ContextTag(
+                icon: Icons.diversity_3_rounded,
+                label: 'Grupo',
+                value: TextSanitizer.clean(visiblePlan.groupSize!),
+              ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        _PlanCard(plan: visiblePlan),
+        const SizedBox(height: 24),
+        PlanMapPreview(places: visiblePlan.places),
+        const SizedBox(height: 12),
+        _SecondaryButton(
+          label: 'Abrir ruta',
+          onPressed: () => _openRouteInMaps(visiblePlan),
+        ),
+        const SizedBox(height: 24),
+        PlanRoutePreview(plan: visiblePlan),
+        const SizedBox(height: 24),
+        _InsightPanel(title: 'Por qué te pega', text: visiblePlan.whyItFits),
+        const SizedBox(height: 14),
+        _InsightPanel(title: 'Vibe del plan', text: visiblePlan.vibe),
+        const SizedBox(height: 30),
+        Text(
+          'Itinerario',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...visiblePlan.itinerarySteps.indexed.map((entry) {
+          final index = entry.$1;
+          final step = entry.$2;
+
+          return _ItineraryStep(
+            number: '${index + 1}',
+            title: _stepTitleFor(visiblePlan, index),
+            address: _stepAddressFor(visiblePlan, index),
+            description: TextSanitizer.clean(step),
+            place: index < visiblePlan.places.length
+                ? visiblePlan.places[index]
+                : null,
+            onOpenPlace: index < visiblePlan.places.length
+                ? () => _openPlaceInMaps(visiblePlan.places[index])
+                : null,
+          );
+        }),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Future<void> _handlePageChanged(int index) async {
+    if (index >= plans.length) {
+      if (!isGeneratingAnother) {
+        await _generateAnotherPlan(fromSwipe: true);
+      }
+      return;
+    }
+
+    HapticService.selectionClick();
+    final selectedPlan = plans[index];
+    final savedAsFavorite = await LocalPlanStorage.isFavorite(selectedPlan);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      currentIndex = index;
+      isFavorite = savedAsFavorite;
+    });
   }
 
   Future<void> _persistGeneratedPlan(PlanModel generatedPlan) async {
@@ -262,7 +328,18 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
     });
   }
 
-  Future<void> _generateAnotherPlan() async {
+  Future<void> _generateAnotherPlan({bool fromSwipe = false}) async {
+    if (isGeneratingAnother) {
+      return;
+    }
+
+    if (!fromSwipe) {
+      HapticService.heavyImpact();
+    }
+    setState(() {
+      isGeneratingAnother = true;
+    });
+
     final canGenerate = await UsageLimitsService.canGeneratePlan();
     if (!mounted) {
       return;
@@ -278,13 +355,17 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
 
       Navigator.of(
         context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const PremiumScreen()));
+      ).push(tonightPageRoute<void>((_) => const PremiumScreen()));
+      if (fromSwipe) {
+        await _animateToCurrentPlan();
+      }
+      if (mounted) {
+        setState(() {
+          isGeneratingAnother = false;
+        });
+      }
       return;
     }
-
-    setState(() {
-      isGeneratingAnother = true;
-    });
 
     try {
       final startedAt = DateTime.now();
@@ -306,16 +387,36 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
         moment: nextPlan.moment,
         weather: nextPlan.weather,
       );
+      HapticService.success();
       final savedAsFavorite = await LocalPlanStorage.isFavorite(nextPlan);
       if (!mounted) {
         return;
       }
 
+      final nextIndex = plans.length;
       setState(() {
-        plan = nextPlan;
+        plans.add(nextPlan);
+        currentIndex = nextIndex;
         isFavorite = savedAsFavorite;
       });
+      if (!fromSwipe) {
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) {
+          return;
+        }
+        await _pageController.animateToPage(
+          nextIndex,
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
+        );
+      }
     } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      if (fromSwipe) {
+        await _animateToCurrentPlan();
+      }
       if (!mounted) {
         return;
       }
@@ -336,6 +437,18 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
     }
   }
 
+  Future<void> _animateToCurrentPlan() async {
+    if (!_pageController.hasClients) {
+      return;
+    }
+
+    await _pageController.animateToPage(
+      currentIndex,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   Future<PlanModel> _generateDifferentPlan() async {
     PlanModel nextPlan = plan;
 
@@ -351,7 +464,7 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
         groupSize: plan.groupSize,
       );
 
-      if (!_isSamePlan(nextPlan, plan)) {
+      if (!plans.any((savedPlan) => _isSamePlan(nextPlan, savedPlan))) {
         return nextPlan;
       }
     }
@@ -359,37 +472,62 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
     return nextPlan;
   }
 
+  void _editCriteria() {
+    HapticService.lightImpact();
+    Navigator.of(context).pushReplacement(
+      tonightPageRoute<void>(
+        (_) => PlanSetupScreen(
+          initialMood: plan.mood,
+          initialLocation: plan.location,
+          initialMoment: plan.moment,
+          initialBudget: plan.budget,
+          initialTime: plan.time,
+          initialDistance: plan.distance,
+          initialWeather: plan.weather,
+          initialGroupSize: plan.groupSize,
+        ),
+      ),
+    );
+  }
+
   bool _isSamePlan(PlanModel firstPlan, PlanModel secondPlan) {
     return firstPlan.title == secondPlan.title &&
         firstPlan.description == secondPlan.description;
   }
 
-  Future<void> _saveFavorite() async {
-    await LocalPlanStorage.addToFavorites(plan);
+  Future<void> _toggleFavorite() async {
+    HapticService.mediumImpact();
+    final savedAsFavorite = await LocalPlanStorage.toggleFavorite(plan);
     if (!mounted) {
       return;
     }
 
     setState(() {
-      isFavorite = true;
+      isFavorite = savedAsFavorite;
     });
-    await const AnalyticsService().logPlanSavedFavorite(mood: plan.mood);
+    if (savedAsFavorite) {
+      await const AnalyticsService().logPlanSavedFavorite(mood: plan.mood);
+    }
     if (!mounted) {
       return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: Color(0xFF17131D),
-        content: Text('Plan guardado en favoritos'),
+        backgroundColor: const Color(0xFF17131D),
+        content: Text(
+          savedAsFavorite
+              ? 'Plan guardado en favoritos'
+              : 'Plan quitado de favoritos',
+        ),
       ),
     );
   }
 
-  String _stepTitleFor(int index) {
-    if (plan.places.length > index) {
-      return plan.places[index].name;
+  String _stepTitleFor(PlanModel targetPlan, int index) {
+    if (targetPlan.places.length > index) {
+      return TextSanitizer.clean(targetPlan.places[index].name);
     }
 
     switch (index) {
@@ -403,7 +541,16 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
     }
   }
 
+  String? _stepAddressFor(PlanModel targetPlan, int index) {
+    if (targetPlan.places.length <= index) {
+      return null;
+    }
+
+    return TextSanitizer.cleanOptional(targetPlan.places[index].address);
+  }
+
   Future<void> _sharePlan() async {
+    HapticService.mediumImpact();
     try {
       final result = await SharePlus.instance.share(
         ShareParams(subject: 'Mi plan en Tonight', text: _shareText),
@@ -427,7 +574,32 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
     }
   }
 
+  Future<void> _openRouteInMaps(PlanModel targetPlan) async {
+    HapticService.mediumImpact();
+    final didOpen = await _mapsLauncherService.openRoute(targetPlan.places);
+    if (!mounted) {
+      return;
+    }
+
+    if (!didOpen) {
+      _showMapsError();
+    }
+  }
+
+  Future<void> _openPlaceInMaps(PlaceModel place) async {
+    HapticService.mediumImpact();
+    final didOpen = await _mapsLauncherService.openPlace(place);
+    if (!mounted) {
+      return;
+    }
+
+    if (!didOpen) {
+      _showMapsError();
+    }
+  }
+
   Future<void> _sharePlanImage() async {
+    HapticService.mediumImpact();
     setState(() {
       isSharingImage = true;
     });
@@ -439,7 +611,7 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
           child: SharePlanCard(plan: plan),
         ),
         context: context,
-        pixelRatio: 3,
+        pixelRatio: 2,
         targetSize: SharePlanCard.storySize,
       );
       final temporaryDirectory = await getTemporaryDirectory();
@@ -452,7 +624,7 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
       final result = await SharePlus.instance.share(
         ShareParams(
           subject: 'Mi plan en Tonight',
-          text: 'Mi plan en Tonight: ${plan.title}',
+          text: 'Mi plan en Tonight: ${TextSanitizer.clean(plan.title)}',
           files: [XFile(imageFile.path, mimeType: 'image/png')],
           fileNameOverrides: const ['tonight-plan.png'],
         ),
@@ -483,29 +655,7 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
   }
 
   String get _shareText {
-    final itinerary = plan.itinerarySteps.indexed
-        .map((entry) {
-          return '${entry.$1 + 1}. ${entry.$2}';
-        })
-        .join('\n');
-
-    return '''
-Mi plan en Tonight
-
-${plan.title}
-${plan.description}
-
-Mood: ${plan.mood}
-Ubicación: ${plan.location}
-Momento: ${plan.moment}
-Clima: ${plan.weather}
-Coste estimado: ${plan.estimatedCost}
-Duración estimada: ${plan.estimatedDuration}
-${plan.groupSize == null ? '' : 'Tamaño del grupo: ${plan.groupSize}\n'}
-
-Itinerario:
-$itinerary
-''';
+    return PlanTextFormatter.shareText(plan);
   }
 
   void _showShareError() {
@@ -524,6 +674,16 @@ $itinerary
         behavior: SnackBarBehavior.floating,
         backgroundColor: Color(0xFF17131D),
         content: Text('No se pudo preparar la imagen. Inténtalo de nuevo.'),
+      ),
+    );
+  }
+
+  void _showMapsError() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Color(0xFF17131D),
+        content: Text('No se pudo abrir Google Maps.'),
       ),
     );
   }
@@ -560,6 +720,136 @@ class _GeneratingAnotherState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PlanPagerIndicator extends StatelessWidget {
+  const _PlanPagerIndicator({required this.currentIndex, required this.count});
+
+  final int currentIndex;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Plan ${currentIndex + 1} de $count',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(width: 10),
+            ...List.generate(count, (index) {
+              final isSelected = index == currentIndex;
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: isSelected ? 18 : 6,
+                height: 6,
+                margin: const EdgeInsets.only(right: 5),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFFE8B66B)
+                      : Colors.white.withValues(alpha: 0.24),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeGeneratePage extends StatelessWidget {
+  const _SwipeGeneratePage({
+    required this.texts,
+    required this.isLoading,
+    required this.onGenerate,
+  });
+
+  final AppTextValues texts;
+  final bool isLoading;
+  final VoidCallback? onGenerate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GlassPanel(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+        borderRadius: 30,
+        opacity: 0.05,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8B66B).withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: const Color(0xFFE8B66B).withValues(alpha: 0.22),
+                ),
+              ),
+              child: isLoading
+                  ? const Padding(
+                      padding: EdgeInsets.all(18),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.6,
+                        color: Color(0xFFE8B66B),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.swipe_left_rounded,
+                      color: Color(0xFFE8B66B),
+                      size: 30,
+                    ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              isLoading ? texts.generatingAnother : texts.generateAnother,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                height: 1.18,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Mismos criterios, nueva combinación.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.58),
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+            if (!isLoading) ...[
+              const SizedBox(height: 18),
+              _SecondaryButton(
+                label: texts.generatePlan,
+                onPressed: onGenerate,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -657,7 +947,7 @@ class _PlanCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            plan.title,
+            TextSanitizer.clean(plan.title),
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -666,7 +956,7 @@ class _PlanCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            plan.description,
+            TextSanitizer.clean(plan.description),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: Colors.white.withValues(alpha: 0.72),
               height: 1.48,
@@ -834,12 +1124,18 @@ class _ItineraryStep extends StatelessWidget {
   const _ItineraryStep({
     required this.number,
     required this.title,
+    this.address,
     required this.description,
+    this.place,
+    this.onOpenPlace,
   });
 
   final String number;
   final String title;
+  final String? address;
   final String description;
+  final PlaceModel? place;
+  final VoidCallback? onOpenPlace;
 
   @override
   Widget build(BuildContext context) {
@@ -880,6 +1176,17 @@ class _ItineraryStep extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  if (address != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      address!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFFE8B66B).withValues(alpha: 0.78),
+                        fontWeight: FontWeight.w800,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 6),
                   Text(
                     description,
@@ -888,11 +1195,42 @@ class _ItineraryStep extends StatelessWidget {
                       height: 1.42,
                     ),
                   ),
+                  if (place != null) ...[
+                    const SizedBox(height: 12),
+                    _MapsTextButton(onPressed: onOpenPlace),
+                  ],
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapsTextButton extends StatelessWidget {
+  const _MapsTextButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          foregroundColor: const Color(0xFFE8B66B),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: const Icon(Icons.map_rounded, size: 17),
+        label: const Text(
+          'Ver en Maps',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
       ),
     );
   }

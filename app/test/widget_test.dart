@@ -10,17 +10,23 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:app/main.dart';
+import 'package:app/services/chat_plan_service.dart';
 import 'package:app/services/daily_plan_service.dart';
+import 'package:app/services/language_service.dart';
 import 'package:app/services/local_plan_storage.dart';
 import 'package:app/services/mock_plan_generator.dart';
 import 'package:app/services/mock_places_service.dart';
+import 'package:app/services/mock_community_service.dart';
 import 'package:app/services/onboarding_service.dart';
+import 'package:app/services/notification_service.dart';
 import 'package:app/services/plan_generation_service.dart';
 import 'package:app/services/premium_service.dart';
 import 'package:app/services/usage_limits_service.dart';
+import 'package:app/services/user_insights_service.dart';
 import 'package:app/services/user_preferences_service.dart';
 import 'package:app/services/weather_service.dart';
 import 'package:app/widgets/mood_chip.dart';
+import 'package:app/widgets/share_plan_card.dart';
 import 'package:app/widgets/trending_plan_card.dart';
 
 Finder _moodChipFinder(String label) {
@@ -35,7 +41,10 @@ void main() {
     WeatherService.debugAutomaticWeatherResolver = () async {
       return WeatherService.automaticWeather;
     };
+    ChatPlanService.debugGeneratePlanFromMessage = null;
     UsageLimitsService.debugNowProvider = null;
+    NotificationService.debugSkipPluginCalls = true;
+    await LanguageService.setLanguage(LanguageService.spanish);
     await LocalPlanStorage.clear();
     await PremiumService.setPremiumMock(false);
   });
@@ -136,6 +145,18 @@ void main() {
     );
     expect(fallbackPlaces.length, greaterThanOrEqualTo(3));
     expect(fallbackPlaces.every((place) => place.location == 'Bilbao'), isTrue);
+  });
+
+  test('MockCommunityService provides public plans with social metadata', () {
+    final communityPlans = MockCommunityService.getPublicPlans();
+
+    expect(communityPlans.length, greaterThanOrEqualTo(12));
+    expect(communityPlans.every((plan) => plan.likes > 0), isTrue);
+    expect(communityPlans.every((plan) => plan.tag.trim().isNotEmpty), isTrue);
+    expect(
+      communityPlans.map((communityPlan) => communityPlan.plan.location),
+      containsAll(['Madrid', 'Barcelona', 'Valencia']),
+    );
   });
 
   test('MockPlanGenerator can attach selected mock places', () {
@@ -259,9 +280,9 @@ void main() {
       await UsageLimitsService.registerPlanGenerated();
     }
 
-    expect(await UsageLimitsService.getTodayUsage(), 5);
+    expect(await UsageLimitsService.getTodayUsage(), 2);
     expect(await UsageLimitsService.getRemainingPlans(), 0);
-    expect(UsageLimitsService.getDailyLimit(), 5);
+    expect(UsageLimitsService.getDailyLimit(), 2);
     expect(await UsageLimitsService.getRemainingPlansToday(), 0);
     expect(await UsageLimitsService.canGeneratePlan(), isFalse);
 
@@ -291,6 +312,137 @@ void main() {
     expect(await UsageLimitsService.canGeneratePlan(), isTrue);
   });
 
+  test('LocalPlanStorage returns the latest generated plan', () async {
+    final firstPlan = MockPlanGenerator.generate(
+      mood: 'Cita',
+      budget: 'Gratis',
+      time: '1h',
+      distance: 'Cerca',
+      moment: 'Ahora',
+      location: 'Centro',
+    );
+    final latestPlan = MockPlanGenerator.generate(
+      mood: 'Chill',
+      budget: 'Gratis',
+      time: '2h',
+      distance: 'Media',
+      moment: 'Tarde',
+      location: 'Lavapies',
+    );
+
+    await LocalPlanStorage.addToHistory(firstPlan);
+    await LocalPlanStorage.addToHistory(latestPlan);
+
+    final storedPlan = await LocalPlanStorage.getLastGeneratedPlan();
+    expect(storedPlan?.id, latestPlan.id);
+    expect(storedPlan?.title, latestPlan.title);
+  });
+
+  test('UserInsightsService detects common local preferences', () async {
+    await LocalPlanStorage.addToHistory(
+      MockPlanGenerator.generate(
+        mood: 'Chill',
+        budget: 'Gratis',
+        time: '1h',
+        distance: 'Cerca',
+        moment: 'Tarde',
+        location: 'Madrid',
+        weather: 'Soleado',
+      ),
+    );
+    await LocalPlanStorage.addToHistory(
+      MockPlanGenerator.generate(
+        mood: 'Chill',
+        budget: 'Gratis',
+        time: '1h',
+        distance: 'Cerca',
+        moment: 'Tarde',
+        location: 'Madrid',
+        weather: 'Soleado',
+      ),
+    );
+    await LocalPlanStorage.addToFavorites(
+      MockPlanGenerator.generate(
+        mood: 'Cita',
+        budget: '€€',
+        time: '2h',
+        distance: 'Media',
+        moment: 'Ahora',
+        location: 'Barcelona',
+        weather: 'Nublado',
+      ),
+    );
+
+    final insights = await UserInsightsService.getInsights();
+
+    expect(insights, isNotNull);
+    expect(insights?.mood, 'Chill');
+    expect(insights?.location, 'Madrid');
+    expect(insights?.weather, 'Soleado');
+    expect(insights?.budget, 'Gratis');
+    expect(insights?.moment, 'Tarde');
+  });
+
+  test('NotificationService stores smart notification preference', () async {
+    expect(await NotificationService.isSmartNotificationsEnabled(), isFalse);
+
+    final scheduled = await NotificationService.scheduleSmartNotifications();
+
+    expect(scheduled, isTrue);
+    expect(await NotificationService.isSmartNotificationsEnabled(), isTrue);
+
+    await NotificationService.cancelSmartNotifications();
+
+    expect(await NotificationService.isSmartNotificationsEnabled(), isFalse);
+  });
+
+  test('LanguageService stores selected language', () async {
+    expect(await LanguageService.getLanguage(), LanguageService.spanish);
+    expect(
+      await LanguageService.getCurrentLanguageCode(),
+      LanguageService.spanish,
+    );
+
+    await LanguageService.setLanguage(LanguageService.english);
+
+    expect(await LanguageService.getLanguage(), LanguageService.english);
+    expect(
+      await LanguageService.getCurrentLanguageCode(),
+      LanguageService.english,
+    );
+    expect(LanguageService.currentLanguage, LanguageService.english);
+  });
+
+  testWidgets('SharePlanCard renders branded story with QR call to action', (
+    WidgetTester tester,
+  ) async {
+    final plan = MockPlanGenerator.generate(
+      mood: 'Chill',
+      budget: 'Gratis',
+      time: '2h',
+      distance: 'Cerca',
+      moment: 'Tarde',
+      location: 'Madrid',
+      weather: 'Soleado',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: FittedBox(child: SharePlanCard(plan: plan)),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Tonight'), findsOneWidget);
+    expect(find.text('Haz tu propio plan en Tonight'), findsOneWidget);
+    expect(find.text('tonight.app'), findsOneWidget);
+    expect(find.text('Escanéame'), findsOneWidget);
+    expect(find.byType(SharePlanCard), findsOneWidget);
+  });
+
   testWidgets('Tonight home renders the core experience', (
     WidgetTester tester,
   ) async {
@@ -303,7 +455,7 @@ void main() {
     expect(find.text('Mañana · Tarde · Noche'), findsOneWidget);
     expect(find.text('Plan del día'), findsOneWidget);
     expect(find.text('Hoy'), findsOneWidget);
-    expect(find.text('Te quedan 5 planes gratis hoy'), findsOneWidget);
+    expect(find.text('Te quedan 2 planes gratis hoy'), findsOneWidget);
     expect(find.text('Trending ahora'), findsOneWidget);
     expect(find.text('Ruta secreta de última hora'), findsOneWidget);
     expect(find.text('¿Qué buscas ahora?'), findsOneWidget);
@@ -315,9 +467,56 @@ void main() {
     expect(find.text('Crear mi plan'), findsOneWidget);
     expect(find.text('Guardados'), findsOneWidget);
     expect(find.text('Explorar'), findsOneWidget);
+    expect(find.text('Comunidad'), findsOneWidget);
+    expect(find.text('Chat'), findsWidgets);
     expect(find.text('Inicio'), findsOneWidget);
     expect(find.text('Ajustes'), findsOneWidget);
     expect(find.byIcon(Icons.settings_rounded), findsOneWidget);
+  });
+
+  testWidgets('Chat plan screen generates a plan from natural language', (
+    WidgetTester tester,
+  ) async {
+    await markOnboardingAsSeen();
+    ChatPlanService.debugGeneratePlanFromMessage = (message) async {
+      return ChatPlanResult(
+        usedFallback: false,
+        plan: MockPlanGenerator.generate(
+          mood: 'Cita',
+          budget: '€',
+          time: '2h',
+          distance: 'Cerca',
+          moment: 'Ahora',
+          location: 'Madrid',
+          weather: 'Automático',
+        ),
+      );
+    };
+
+    await tester.pumpWidget(const TonightApp());
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('home-chat-plan-card')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('home-chat-plan-card')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cuéntame tu plan'), findsOneWidget);
+    expect(find.text('Tengo 20€ y estoy con mi pareja'), findsOneWidget);
+
+    await tester.tap(find.text('Tengo 20€ y estoy con mi pareja'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Generar plan'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tu plan está listo'), findsOneWidget);
+    expect(find.text('Mood: Cita'), findsOneWidget);
+    expect(find.text('Ubicación: Madrid'), findsOneWidget);
   });
 
   testWidgets('Tonight opens explore tab with trending and categories', (
@@ -342,6 +541,47 @@ void main() {
 
     expect(find.text('Vamos a preparar tu plan'), findsOneWidget);
     expect(find.text('Mood seleccionado: Viaje'), findsOneWidget);
+  });
+
+  testWidgets('Tonight opens community tab and can use public plans', (
+    WidgetTester tester,
+  ) async {
+    await markOnboardingAsSeen();
+    await tester.pumpWidget(const TonightApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Comunidad'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Planes que están probando otros usuarios'),
+      findsOneWidget,
+    );
+    expect(find.text('Comunidad próximamente en tiempo real'), findsOneWidget);
+    expect(find.text('Todos'), findsOneWidget);
+    expect(find.text('Madrid'), findsWidgets);
+    expect(find.text('Cita con terraza escondida'), findsOneWidget);
+
+    await tester.tap(find.text('Madrid').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cita con terraza escondida'), findsOneWidget);
+
+    await tester.tap(find.text('Cita con terraza escondida'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Detalle del plan'), findsOneWidget);
+    expect(find.text('Cita con terraza escondida'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Usar plan').first);
+    await tester.tap(find.text('Usar plan').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vamos a preparar tu plan'), findsOneWidget);
+    expect(find.text('Mood seleccionado: Cita'), findsOneWidget);
+    expect(find.text('Madrid'), findsWidgets);
   });
 
   testWidgets('Tonight opens trending plan detail', (
@@ -384,10 +624,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.text('Creando tu plan'), findsOneWidget);
-    expect(
-      find.text('Analizando mood, zona, clima y momento...'),
-      findsOneWidget,
-    );
+    expect(find.text('Leyendo tu mood'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 2600));
     await tester.pumpAndSettle();
@@ -469,6 +706,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Ajustes'), findsWidgets);
+    expect(find.text('Idioma'), findsOneWidget);
+    expect(find.text('Español'), findsOneWidget);
+    expect(find.text('English'), findsOneWidget);
+    expect(find.text('Notificaciones'), findsOneWidget);
+    expect(find.text('Notificaciones inteligentes'), findsOneWidget);
     expect(find.text('Datos'), findsOneWidget);
     expect(find.text('Debug'), findsOneWidget);
     expect(find.text('Premium mock'), findsOneWidget);
@@ -510,6 +752,33 @@ void main() {
       isFalse,
     );
     expect(find.text('Planes perfectos para ahora'), findsOneWidget);
+  });
+
+  testWidgets('Settings language selection updates main visible labels', (
+    WidgetTester tester,
+  ) async {
+    await markOnboardingAsSeen();
+    await tester.pumpWidget(const TonightApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('English'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsWidgets);
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Perfect plans for right now.'), findsOneWidget);
+    expect(find.text('Create my plan'), findsOneWidget);
+    expect(find.text('Surprise me'), findsOneWidget);
   });
 
   testWidgets('Tonight shows onboarding on first launch', (
@@ -565,6 +834,98 @@ void main() {
 
     expect(find.text('Vamos a preparar tu plan'), findsOneWidget);
     expect(find.text('Mood seleccionado: Chill'), findsOneWidget);
+  });
+
+  testWidgets('Home shows last generated plan and can reuse criteria', (
+    WidgetTester tester,
+  ) async {
+    await markOnboardingAsSeen();
+    final lastPlan = MockPlanGenerator.generate(
+      mood: 'Chill',
+      budget: 'Gratis',
+      time: '1h',
+      distance: 'Cerca',
+      moment: 'Tarde',
+      location: 'Lavapies',
+    );
+    await LocalPlanStorage.addToHistory(lastPlan);
+
+    await tester.pumpWidget(const TonightApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Último plan'), findsOneWidget);
+    expect(find.text(lastPlan.title), findsOneWidget);
+    expect(find.text('Ver plan'), findsOneWidget);
+    expect(find.text('Generar parecido'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Ver plan'));
+    await tester.tap(find.text('Ver plan'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Detalle del plan'), findsOneWidget);
+    expect(find.text(lastPlan.title), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Generar parecido'));
+    await tester.tap(find.text('Generar parecido'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vamos a preparar tu plan'), findsOneWidget);
+    expect(find.text('Mood seleccionado: Chill'), findsOneWidget);
+    expect(find.text('Lavapies'), findsOneWidget);
+    expect(find.text('Tarde'), findsWidgets);
+  });
+
+  testWidgets('Home shows personal insights and starts recommended plan', (
+    WidgetTester tester,
+  ) async {
+    await markOnboardingAsSeen();
+    await LocalPlanStorage.addToHistory(
+      MockPlanGenerator.generate(
+        mood: 'Chill',
+        budget: 'Gratis',
+        time: '1h',
+        distance: 'Cerca',
+        moment: 'Tarde',
+        location: 'Madrid',
+        weather: 'Soleado',
+      ),
+    );
+    await LocalPlanStorage.addToHistory(
+      MockPlanGenerator.generate(
+        mood: 'Chill',
+        budget: 'Gratis',
+        time: '1h',
+        distance: 'Cerca',
+        moment: 'Tarde',
+        location: 'Madrid',
+        weather: 'Soleado',
+      ),
+    );
+
+    await tester.pumpWidget(const TonightApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tonight aprende de ti'), findsOneWidget);
+    expect(find.text('Últimamente te van los planes Chill'), findsOneWidget);
+    expect(find.text('Sueles buscar planes por Madrid'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Crear plan recomendado'));
+    await tester.tap(find.text('Crear plan recomendado'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('Creando tu plan'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 2600));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tu plan está listo'), findsOneWidget);
+    expect(find.text('Mood: Chill'), findsOneWidget);
+    expect(find.text('Ubicación: Madrid'), findsOneWidget);
+    expect(find.text('Momento: Tarde'), findsOneWidget);
+    expect(find.text('Clima: Soleado'), findsOneWidget);
   });
 
   testWidgets('Saved plans screen renders empty state', (
@@ -686,7 +1047,7 @@ void main() {
 
     expect(find.text('Vamos a preparar tu plan'), findsOneWidget);
     expect(find.text('Mood seleccionado: Amigos'), findsOneWidget);
-    expect(find.text('5 planes gratis restantes hoy'), findsOneWidget);
+    expect(find.text('2 planes gratis restantes hoy'), findsOneWidget);
     expect(find.text('Momento'), findsOneWidget);
     expect(find.text('Clima'), findsOneWidget);
     expect(find.text('¿Dónde estás?'), findsOneWidget);
@@ -820,13 +1181,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.text('Creando tu plan'), findsOneWidget);
-    expect(
-      find.text('Analizando mood, zona, clima y momento...'),
-      findsOneWidget,
-    );
-    expect(find.text('Buscando sitios con buena vibra'), findsOneWidget);
-    expect(find.text('Calculando tiempos y distancia'), findsOneWidget);
-    expect(find.text('Preparando una experiencia diferente'), findsOneWidget);
+    expect(find.text('Leyendo tu mood'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 2600));
     await tester.pumpAndSettle();

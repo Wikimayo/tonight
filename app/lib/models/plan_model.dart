@@ -1,3 +1,4 @@
+import '../utils/text_sanitizer.dart';
 import 'place_model.dart';
 
 class PlanModel {
@@ -75,29 +76,37 @@ class PlanModel {
 
   factory PlanModel.fromJson(Map<String, dynamic> json) {
     return PlanModel(
-      id: json['id'] as String,
+      id: TextSanitizer.clean(json['id'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
-      title: json['title'] as String,
-      description: json['description'] as String,
-      estimatedCost: json['estimatedCost'] as String,
-      estimatedDuration: json['estimatedDuration'] as String,
-      estimatedDistance: json['estimatedDistance'] as String,
-      mood: json['mood'] as String,
-      budget: json['budget'] as String,
-      time: json['time'] as String,
-      distance: json['distance'] as String,
-      moment: json['moment'] as String,
-      location: json['location'] as String,
-      weather: json['weather'] as String? ?? 'Automático',
-      groupSize: json['groupSize'] as String?,
-      source: json['source'] as String?,
-      reason: json['reason'] as String?,
+      title: TextSanitizer.clean(json['title'] as String),
+      description: TextSanitizer.clean(json['description'] as String),
+      estimatedCost: TextSanitizer.clean(json['estimatedCost'] as String),
+      estimatedDuration: TextSanitizer.clean(
+        json['estimatedDuration'] as String,
+      ),
+      estimatedDistance: TextSanitizer.clean(
+        json['estimatedDistance'] as String,
+      ),
+      mood: TextSanitizer.clean(json['mood'] as String),
+      budget: TextSanitizer.clean(json['budget'] as String),
+      time: TextSanitizer.clean(json['time'] as String),
+      distance: TextSanitizer.clean(json['distance'] as String),
+      moment: TextSanitizer.clean(json['moment'] as String),
+      location: TextSanitizer.clean(json['location'] as String),
+      weather: TextSanitizer.clean(json['weather'] as String? ?? 'Automático'),
+      groupSize: TextSanitizer.cleanOptional(json['groupSize']?.toString()),
+      source: TextSanitizer.cleanOptional(json['source']?.toString()),
+      reason: TextSanitizer.cleanOptional(json['reason']?.toString()),
       places: (json['places'] as List? ?? [])
           .map((place) => PlaceModel.fromJson(place as Map<String, dynamic>))
           .toList(),
-      itinerarySteps: List<String>.from(json['itinerarySteps'] as List),
-      whyItFits: json['whyItFits'] as String,
-      vibe: json['vibe'] as String,
+      itinerarySteps: List<String>.from(
+        (json['itinerarySteps'] as List).map(
+          (step) => TextSanitizer.clean('$step'),
+        ),
+      ),
+      whyItFits: TextSanitizer.clean(json['whyItFits'] as String),
+      vibe: TextSanitizer.clean(json['vibe'] as String),
     );
   }
 }

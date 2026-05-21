@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_texts.dart';
 import '../services/analytics_service.dart';
+import '../services/haptic_service.dart';
+import '../services/language_service.dart';
 import '../services/onboarding_service.dart';
+import '../utils/tonight_page_route.dart';
 import 'main_navigation_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -59,6 +63,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final texts = AppTexts.of(LanguageService.currentLanguage);
+    final slides = _localizedSlides(texts);
+
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(
@@ -88,6 +95,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
                       if (slide.isPreferenceStep) {
                         return _FavoriteVibeSlide(
+                          texts: texts,
                           slide: slide,
                           vibes: favoriteVibes,
                           selectedVibe: selectedFavoriteVibe,
@@ -107,7 +115,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 _ProgressDots(count: slides.length, currentIndex: currentIndex),
                 const SizedBox(height: 28),
                 _OnboardingButton(
-                  label: isLastSlide ? 'Empezar' : 'Siguiente',
+                  label: isLastSlide
+                      ? texts.onboardingStart
+                      : texts.onboardingNext,
                   onPressed: _handlePrimaryAction,
                 ),
               ],
@@ -120,6 +130,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _handlePrimaryAction() async {
     if (!isLastSlide) {
+      HapticService.lightImpact();
       await pageController.nextPage(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
@@ -127,6 +138,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
+    HapticService.success();
     await OnboardingService.saveFavoriteVibe(selectedFavoriteVibe);
     await OnboardingService.markAsSeen();
     await const AnalyticsService().logOnboardingCompleted(
@@ -137,8 +149,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
 
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const MainNavigationScreen()),
+      tonightPageRoute<void>((_) => const MainNavigationScreen()),
     );
+  }
+
+  List<_OnboardingSlide> _localizedSlides(AppTextValues texts) {
+    if (texts.isEnglish) {
+      return [
+        _OnboardingSlide(
+          title: texts.onboardingTitle1,
+          text: 'Tonight finds ideas for morning, afternoon or night.',
+        ),
+        _OnboardingSlide(
+          title: texts.onboardingTitle2,
+          text:
+              'Date, friends, solo, chill, party, surprise, travel or group. You pick the mood.',
+        ),
+        _OnboardingSlide(
+          title: texts.onboardingTitle3,
+          text: 'Use your location to create closer, more personal plans.',
+        ),
+        _OnboardingSlide(
+          title: texts.onboardingTitle4,
+          text:
+              'We will use it to give you quick access to plans that feel more yours.',
+          isPreferenceStep: true,
+        ),
+      ];
+    }
+
+    return slides;
   }
 }
 
@@ -215,12 +255,14 @@ class _SlideView extends StatelessWidget {
 
 class _FavoriteVibeSlide extends StatelessWidget {
   const _FavoriteVibeSlide({
+    required this.texts,
     required this.slide,
     required this.vibes,
     required this.selectedVibe,
     required this.onSelected,
   });
 
+  final AppTextValues texts;
   final _OnboardingSlide slide;
   final List<String> vibes;
   final String selectedVibe;
@@ -283,7 +325,7 @@ class _FavoriteVibeSlide extends StatelessWidget {
             final isSelected = selectedVibe == vibe;
 
             return _FavoriteVibeChip(
-              label: vibe,
+              label: texts.moodLabel(vibe),
               isSelected: isSelected,
               onTap: () => onSelected(vibe),
             );
@@ -313,7 +355,10 @@ class _FavoriteVibeChip extends StatelessWidget {
           : Colors.white.withValues(alpha: 0.075),
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticService.selectionClick();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),

@@ -1,3 +1,5 @@
+import '../utils/text_sanitizer.dart';
+
 class PlaceModel {
   const PlaceModel({
     required this.id,
@@ -8,6 +10,7 @@ class PlaceModel {
     required this.weatherTags,
     required this.priceLevel,
     required this.description,
+    this.address,
     this.latitude,
     this.longitude,
   });
@@ -20,6 +23,7 @@ class PlaceModel {
   final List<String> weatherTags;
   final String priceLevel;
   final String description;
+  final String? address;
   final double? latitude;
   final double? longitude;
 
@@ -33,6 +37,7 @@ class PlaceModel {
       'weatherTags': weatherTags,
       'priceLevel': priceLevel,
       'description': description,
+      'address': address,
       'latitude': latitude,
       'longitude': longitude,
     };
@@ -40,14 +45,19 @@ class PlaceModel {
 
   factory PlaceModel.fromJson(Map<String, dynamic> json) {
     return PlaceModel(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      category: json['category'] as String,
-      location: json['location'] as String,
-      moodTags: List<String>.from(json['moodTags'] as List),
-      weatherTags: List<String>.from(json['weatherTags'] as List),
-      priceLevel: json['priceLevel'] as String,
-      description: json['description'] as String,
+      id: TextSanitizer.clean(json['id'] as String),
+      name: TextSanitizer.clean(json['name'] as String),
+      category: TextSanitizer.clean(json['category'] as String),
+      location: TextSanitizer.clean(json['location'] as String),
+      moodTags: List<String>.from(
+        (json['moodTags'] as List).map((tag) => TextSanitizer.clean('$tag')),
+      ),
+      weatherTags: List<String>.from(
+        (json['weatherTags'] as List).map((tag) => TextSanitizer.clean('$tag')),
+      ),
+      priceLevel: TextSanitizer.clean(json['priceLevel'] as String),
+      description: TextSanitizer.clean(json['description'] as String),
+      address: TextSanitizer.cleanOptional(json['address']?.toString()),
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
     );

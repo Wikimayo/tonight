@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../models/plan_model.dart';
 import '../models/place_model.dart';
+import '../utils/text_sanitizer.dart';
 import 'mock_places_service.dart';
 
 class MockPlanGenerator {
@@ -51,25 +52,31 @@ class MockPlanGenerator {
     return PlanModel(
       id: '${now.microsecondsSinceEpoch}-${_random.nextInt(9999)}',
       createdAt: now,
-      title: variant.title(context),
-      description: '${variant.description(context)} ${context.weatherSentence}',
-      estimatedCost: _estimatedCostFor(budget),
-      estimatedDuration: _estimatedDurationFor(time),
-      estimatedDistance: _estimatedDistanceFor(distance),
-      mood: mood,
-      budget: budget,
-      time: time,
-      distance: distance,
-      moment: moment,
-      location: context.location,
-      weather: context.weather,
-      groupSize: context.groupSize,
+      title: TextSanitizer.clean(variant.title(context)),
+      description: TextSanitizer.clean(
+        '${variant.description(context)} ${context.weatherSentence}',
+      ),
+      estimatedCost: TextSanitizer.clean(_estimatedCostFor(budget)),
+      estimatedDuration: TextSanitizer.clean(_estimatedDurationFor(time)),
+      estimatedDistance: TextSanitizer.clean(_estimatedDistanceFor(distance)),
+      mood: TextSanitizer.clean(mood),
+      budget: TextSanitizer.clean(budget),
+      time: TextSanitizer.clean(time),
+      distance: TextSanitizer.clean(distance),
+      moment: TextSanitizer.clean(moment),
+      location: TextSanitizer.clean(context.location),
+      weather: TextSanitizer.clean(context.weather),
+      groupSize: TextSanitizer.cleanOptional(context.groupSize),
       source: 'mock',
-      reason: reason,
+      reason: TextSanitizer.cleanOptional(reason),
       places: places.length >= 3 ? places : const [],
-      itinerarySteps: itinerarySteps,
-      whyItFits: '${variant.whyItFits(context)} ${context.weatherWhyItFits}',
-      vibe: '${variant.vibe(context)} ${context.weatherVibe}',
+      itinerarySteps: itinerarySteps.map(TextSanitizer.clean).toList(),
+      whyItFits: TextSanitizer.clean(
+        '${variant.whyItFits(context)} ${context.weatherWhyItFits}',
+      ),
+      vibe: TextSanitizer.clean(
+        '${variant.vibe(context)} ${context.weatherVibe}',
+      ),
     );
   }
 
@@ -671,7 +678,7 @@ class MockPlanGenerator {
   }
 
   static String _momentCopyFor(String moment) {
-    switch (moment) {
+    switch (TextSanitizer.clean(moment)) {
       case 'Ahora':
         return 'ahora mismo';
       case 'Mañana':
@@ -688,7 +695,7 @@ class MockPlanGenerator {
   }
 
   static String _estimatedCostFor(String budget) {
-    switch (budget) {
+    switch (TextSanitizer.clean(budget)) {
       case 'Gratis':
         return '0-10 €';
       case '€':
@@ -702,7 +709,7 @@ class MockPlanGenerator {
   }
 
   static String _estimatedDurationFor(String time) {
-    switch (time) {
+    switch (TextSanitizer.clean(time)) {
       case '1h':
         return '1 hora';
       case '3h':
@@ -716,7 +723,7 @@ class MockPlanGenerator {
   }
 
   static String _estimatedDistanceFor(String distance) {
-    switch (distance) {
+    switch (TextSanitizer.clean(distance)) {
       case 'Cerca':
         return 'A 10-15 min';
       case 'Media':
@@ -758,7 +765,7 @@ class _PlanContext {
   String get groupCopy => 'un grupo de $groupSizeLabel personas';
 
   String get timeTone {
-    switch (time) {
+    switch (TextSanitizer.clean(time)) {
       case '1h':
         return 'compacto y directo';
       case '3h':
@@ -772,7 +779,7 @@ class _PlanContext {
   }
 
   String get budgetTone {
-    switch (budget) {
+    switch (TextSanitizer.clean(budget)) {
       case 'Gratis':
         return 'sin gastar casi nada';
       case '€':
@@ -786,7 +793,7 @@ class _PlanContext {
   }
 
   String get distanceTone {
-    switch (distance) {
+    switch (TextSanitizer.clean(distance)) {
       case 'Cerca':
         return 'cerca y sin grandes desplazamientos';
       case 'Media':
@@ -798,7 +805,7 @@ class _PlanContext {
   }
 
   String get finalStop {
-    switch (moment) {
+    switch (TextSanitizer.clean(moment)) {
       case 'Mañana':
         return 'Un cierre con panadería, mercado o paseo soleado';
       case 'Tarde':
@@ -814,7 +821,7 @@ class _PlanContext {
   }
 
   String get weatherSentence {
-    switch (weather) {
+    switch (TextSanitizer.clean(weather)) {
       case 'Lluvia':
         return 'Perfecto para un día de lluvia: más indoor, más refugio y menos calle innecesaria.';
       case 'Calor':
@@ -832,7 +839,7 @@ class _PlanContext {
   }
 
   String get weatherWhyItFits {
-    switch (weather) {
+    switch (TextSanitizer.clean(weather)) {
       case 'Lluvia':
         return 'Además, el clima empuja el plan hacia interiores con buena vibra.';
       case 'Calor':
@@ -850,7 +857,7 @@ class _PlanContext {
   }
 
   String get weatherVibe {
-    switch (weather) {
+    switch (TextSanitizer.clean(weather)) {
       case 'Lluvia':
         return 'Refugio elegante, cristales mojados y conversación larga.';
       case 'Calor':

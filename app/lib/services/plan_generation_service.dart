@@ -1,5 +1,6 @@
 import '../models/plan_model.dart';
 import 'ai_plan_api_service.dart';
+import 'language_service.dart';
 import 'mock_plan_generator.dart';
 
 class PlanGenerationService {
@@ -19,6 +20,8 @@ class PlanGenerationService {
     String weather = 'Automático',
     String? groupSize,
   }) async {
+    final language = await LanguageService.getCurrentLanguageCode();
+
     if (useAiBackend) {
       return const AiPlanApiService().generatePlan(
         mood: mood,
@@ -29,6 +32,7 @@ class PlanGenerationService {
         location: location,
         weather: weather,
         groupSize: groupSize,
+        language: language,
       );
     }
 

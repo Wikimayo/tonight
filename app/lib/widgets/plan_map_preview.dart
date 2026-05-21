@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/place_model.dart';
+import '../utils/text_sanitizer.dart';
 import 'glass_panel.dart';
 
 class PlanMapPreview extends StatelessWidget {
@@ -11,11 +12,8 @@ class PlanMapPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mappedPlaces = places
-        .where((place) => place.latitude != null && place.longitude != null)
-        .toList();
-    final canShowMap =
-        places.isNotEmpty && mappedPlaces.length == places.length;
+    final mappedPlaces = places.where(_hasValidCoordinates).toList();
+    final canShowMap = mappedPlaces.isNotEmpty;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
@@ -71,11 +69,25 @@ class PlanMapPreview extends StatelessWidget {
             if (canShowMap)
               _GoogleMapPreview(places: mappedPlaces)
             else
-              const _MapUnavailableState(),
+              _MapUnavailableState(places: places),
           ],
         ),
       ),
     );
+  }
+
+  bool _hasValidCoordinates(PlaceModel place) {
+    final latitude = place.latitude;
+    final longitude = place.longitude;
+
+    return latitude != null &&
+        longitude != null &&
+        latitude.isFinite &&
+        longitude.isFinite &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
   }
 }
 
@@ -96,8 +108,8 @@ class _GoogleMapPreview extends StatelessWidget {
         markerId: MarkerId(place.id),
         position: LatLng(place.latitude!, place.longitude!),
         infoWindow: InfoWindow(
-          title: '${index + 1}. ${place.name}',
-          snippet: place.category,
+          title: '${index + 1}. ${TextSanitizer.clean(place.name)}',
+          snippet: TextSanitizer.clean(place.category),
         ),
       );
     }).toSet();
@@ -128,7 +140,9 @@ class _GoogleMapPreview extends StatelessWidget {
 }
 
 class _MapUnavailableState extends StatelessWidget {
-  const _MapUnavailableState();
+  const _MapUnavailableState({required this.places});
+
+  final List<PlaceModel> places;
 
   @override
   Widget build(BuildContext context) {
@@ -147,32 +161,69 @@ class _MapUnavailableState extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.location_off_rounded,
-              color: Color(0xFFE8B66B),
-              size: 23,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              'Mapa no disponible para este plan',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Colors.white.withValues(alpha: 0.78),
-                fontWeight: FontWeight.w800,
-                height: 1.28,
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.location_searching_rounded,
+                  color: Color(0xFFE8B66B),
+                  size: 23,
+                ),
               ),
-            ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  'Aún no tenemos coordenadas para dibujar el mapa',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.84),
+                    fontWeight: FontWeight.w900,
+                    height: 1.28,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (places.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            ...places
+                .take(3)
+                .map(
+                  (place) => Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.place_rounded,
+                          color: Color(0xFFE8B66B),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            TextSanitizer.clean(place.name),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.68),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
         ],
       ),
     );

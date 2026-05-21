@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../services/haptic_service.dart';
+
 class MoodChip extends StatefulWidget {
   const MoodChip({
     required this.label,
     required this.isSelected,
     required this.onTap,
+    this.iconKey,
     super.key,
   });
 
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final String? iconKey;
 
   @override
   State<MoodChip> createState() => _MoodChipState();
@@ -20,7 +24,7 @@ class _MoodChipState extends State<MoodChip> {
   bool isPressed = false;
 
   IconData get icon {
-    switch (widget.label) {
+    switch (widget.iconKey ?? widget.label) {
       case 'Cita':
         return Icons.favorite_rounded;
       case 'Amigos':
@@ -118,7 +122,10 @@ class _MoodChipState extends State<MoodChip> {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: widget.onTap,
+              onTap: () {
+                HapticService.selectionClick();
+                widget.onTap();
+              },
               onHighlightChanged: (value) {
                 setState(() {
                   isPressed = value;

@@ -21,16 +21,62 @@ class LocalPlanStorage {
 
   static Future<void> addToFavorites(PlanModel plan) async {
     final favorites = await getFavorites();
-    final alreadySaved = favorites.any((savedPlan) => savedPlan.id == plan.id);
-    if (alreadySaved) {
-      return;
+    final nextFavorites = [
+      plan,
+      ...favorites.where((savedPlan) => savedPlan.id != plan.id),
+    ];
+    await _savePlans(_favoritesKey, nextFavorites);
+  }
+
+  static Future<void> removeFromHistory(String planId) async {
+    final history = await getHistory();
+    await _savePlans(
+      _historyKey,
+      history.where((savedPlan) => savedPlan.id != planId).toList(),
+    );
+  }
+
+  static Future<void> removeFromFavorites(String planId) async {
+    final favorites = await getFavorites();
+    await _savePlans(
+      _favoritesKey,
+      favorites.where((savedPlan) => savedPlan.id != planId).toList(),
+    );
+  }
+
+  static Future<void> removePlan(
+    String planId, {
+    bool fromHistory = true,
+    bool fromFavorites = true,
+  }) async {
+    await Future.wait([
+      if (fromHistory) removeFromHistory(planId),
+      if (fromFavorites) removeFromFavorites(planId),
+    ]);
+  }
+
+  static Future<bool> toggleFavorite(PlanModel plan) async {
+    final savedAsFavorite = await isFavorite(plan);
+    if (savedAsFavorite) {
+      await removeFromFavorites(plan.id);
+      return false;
     }
 
-    await _savePlans(_favoritesKey, [plan, ...favorites]);
+    await addToFavorites(plan);
+    return true;
   }
 
   static Future<List<PlanModel>> getHistory() {
     return _loadPlans(_historyKey);
+  }
+
+  static Future<PlanModel?> getLastGeneratedPlan() async {
+    final history = await getHistory();
+    if (history.isEmpty) {
+      return null;
+    }
+
+    return history.first;
   }
 
   static Future<List<PlanModel>> getFavorites() {
@@ -54,6 +100,11 @@ class LocalPlanStorage {
   static Future<bool> isFavorite(PlanModel plan) async {
     final favorites = await getFavorites();
     return favorites.any((savedPlan) => savedPlan.id == plan.id);
+  }
+
+  static Future<bool> isInHistory(PlanModel plan) async {
+    final history = await getHistory();
+    return history.any((savedPlan) => savedPlan.id == plan.id);
   }
 
   static Future<List<PlanModel>> _loadPlans(String key) async {

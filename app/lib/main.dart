@@ -3,12 +3,13 @@ import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
-import 'core/constants/app_strings.dart';
+import 'core/constants/app_texts.dart';
 import 'core/theme/app_theme.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/analytics_service.dart';
 import 'services/crash_reporting_service.dart';
+import 'services/language_service.dart';
 import 'services/onboarding_service.dart';
 
 Future<void> main() async {
@@ -25,6 +26,7 @@ Future<void> main() async {
   // );
   await _initializeFirebaseIfConfigured();
   _configureCrashReporting();
+  await LanguageService.getLanguage();
   await const AnalyticsService().logAppOpened();
   runApp(const TonightApp());
 }
@@ -60,11 +62,19 @@ class TonightApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: AppStrings.appName,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: const AppBootstrap(),
+    return ValueListenableBuilder<String>(
+      valueListenable: LanguageService.languageNotifier,
+      builder: (context, language, child) {
+        final texts = AppTexts.of(language);
+
+        return MaterialApp(
+          title: texts.appName,
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.darkTheme,
+          home: child,
+        );
+      },
+      child: const AppBootstrap(),
     );
   }
 }
