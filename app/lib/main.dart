@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -5,12 +6,14 @@ import 'package:flutter/material.dart';
 
 import 'core/constants/app_texts.dart';
 import 'core/theme/app_theme.dart';
+import 'screens/app_loading_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/analytics_service.dart';
 import 'services/crash_reporting_service.dart';
 import 'services/language_service.dart';
 import 'services/onboarding_service.dart';
+import 'services/user_preferences_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,11 +27,9 @@ Future<void> main() async {
   // await Firebase.initializeApp(
   //   options: DefaultFirebaseOptions.currentPlatform,
   // );
-  await _initializeFirebaseIfConfigured();
   _configureCrashReporting();
-  await LanguageService.getLanguage();
-  await const AnalyticsService().logAppOpened();
   runApp(const TonightApp());
+  unawaited(_initializeFirebaseIfConfigured());
 }
 
 Future<void> _initializeFirebaseIfConfigured() async {
@@ -79,19 +80,38 @@ class TonightApp extends StatelessWidget {
   }
 }
 
-class AppBootstrap extends StatelessWidget {
+class AppBootstrap extends StatefulWidget {
   const AppBootstrap({super.key});
 
   @override
+  State<AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends State<AppBootstrap> {
+  late final Future<_BootstrapResult> _bootstrapFuture = _loadInitialAppState();
+
+  Future<_BootstrapResult> _loadInitialAppState() async {
+    final results = await Future.wait<Object>([
+      LanguageService.getLanguage(),
+      OnboardingService.hasSeenOnboarding(),
+      UserPreferencesService.getPreferences(),
+    ]);
+
+    await const AnalyticsService().logAppOpened();
+
+    return _BootstrapResult(hasSeenOnboarding: results[1] as bool);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: OnboardingService.hasSeenOnboarding(),
+    return FutureBuilder<_BootstrapResult>(
+      future: _bootstrapFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const _InitialLoadingScreen();
+          return const AppLoadingScreen();
         }
 
-        return snapshot.data!
+        return snapshot.data!.hasSeenOnboarding
             ? const MainNavigationScreen()
             : const OnboardingScreen();
       },
@@ -99,25 +119,8 @@ class AppBootstrap extends StatelessWidget {
   }
 }
 
-class _InitialLoadingScreen extends StatelessWidget {
-  const _InitialLoadingScreen();
+class _BootstrapResult {
+  const _BootstrapResult({required this.hasSeenOnboarding});
 
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF211229), Color(0xFF0D0B11), Color(0xFF08080C)],
-            stops: [0, 0.48, 1],
-          ),
-        ),
-        child: Center(
-          child: CircularProgressIndicator(color: Color(0xFFE8B66B)),
-        ),
-      ),
-    );
-  }
+  final bool hasSeenOnboarding;
 }

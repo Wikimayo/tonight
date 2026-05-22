@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/constants/app_texts.dart';
 import '../services/analytics_service.dart';
+import '../services/ai_plan_api_service.dart';
 import '../services/crash_reporting_service.dart';
 import '../services/haptic_service.dart';
 import '../services/language_service.dart';
@@ -163,6 +164,12 @@ class SettingsScreen extends StatelessWidget {
                             ),
                             if (kDebugMode)
                               _SettingsAction(
+                                icon: Icons.cloud_sync_rounded,
+                                label: 'Probar backend',
+                                onPressed: () => _testBackend(context),
+                              ),
+                            if (kDebugMode)
+                              _SettingsAction(
                                 icon: Icons.bug_report_rounded,
                                 label: 'Probar Crashlytics (debug/test)',
                                 onPressed: () => _testCrashlytics(context),
@@ -278,6 +285,19 @@ class SettingsScreen extends StatelessWidget {
     }
 
     _showSnackBar(context, 'Error de prueba registrado en Crashlytics');
+  }
+
+  Future<void> _testBackend(BuildContext context) async {
+    HapticService.mediumImpact();
+    final isConnected = await const AiPlanApiService().testHealth();
+    if (!context.mounted) {
+      return;
+    }
+
+    _showSnackBar(
+      context,
+      isConnected ? 'Backend conectado' : 'Backend no responde',
+    );
   }
 }
 

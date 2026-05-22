@@ -1,4 +1,5 @@
 const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const openaiTimeoutMs = Number(process.env.OPENAI_TIMEOUT_MS || 20000);
 
 const planSchema = {
   type: 'object',
@@ -61,6 +62,7 @@ async function generatePlanWithOpenAI(planRequest) {
   const OpenAI = loadOpenAI();
   const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
+    timeout: openaiTimeoutMs,
   });
 
   const response = await client.responses.create({
@@ -100,6 +102,7 @@ async function generatePlanFromChatWithOpenAI(message, language = 'es') {
   const OpenAI = loadOpenAI();
   const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
+    timeout: openaiTimeoutMs,
   });
 
   const response = await client.responses.create({
@@ -152,8 +155,15 @@ function buildPrompt({
   weather,
   groupSize,
   language = 'es',
+  requestId,
+  randomSeed,
+  avoidSimilarTo = [],
 }) {
   const outputLanguage = getOutputLanguageInstruction(language);
+  const avoidText = Array.isArray(avoidSimilarTo) && avoidSimilarTo.length > 0
+    ? avoidSimilarTo.map((title) => `  - ${title}`).join('\n')
+    : '  - null';
+  const locationLooksLikeStreet = looksLikeStreet(location);
 
   return `
 Genera un plan para Tonight con estos datos de contexto:
@@ -166,6 +176,10 @@ Genera un plan para Tonight con estos datos de contexto:
 - weather: ${weather}
 - groupSize: ${groupSize || 'null'}
 - language: ${language}
+- requestId: ${requestId || 'null'}
+- randomSeed: ${randomSeed ?? 'null'}
+- avoidSimilarTo:
+${avoidText}
 
 Rol:
 - Actua como un planificador local experto en experiencias urbanas, citas, planes con amigos, viajes y planes espontaneos.
@@ -173,6 +187,11 @@ Rol:
 
 Reglas de adaptacion:
 - Adapta todo a mood, budget, time, distance, moment, location, weather y groupSize.
+- Usa randomSeed y requestId como senales de variedad: cada request debe producir una combinacion distinta de titulo, estructura, ritmo e itinerario.
+- No repitas titulos, estructura ni itinerario de planes anteriores.
+- Si avoidSimilarTo contiene titulos, evita planes que se parezcan a esos titulos o a esa idea.
+- Usa la ubicacion concreta como referencia principal.
+- La ubicacion ${locationLooksLikeStreet ? 'parece una calle o direccion concreta' : 'parece una zona o ciudad'}: ${locationLooksLikeStreet ? `propón planes por la zona de ${location}, cerca de ${location} o alrededor de esa calle sin inventar portales ni direcciones exactas.` : `propón planes por la zona de ${location}.`}
 - Si weather indica lluvia, prioriza planes indoor o cubiertos.
 - Si weather indica calor, prioriza horarios suaves, sombra, interiores, tarde o noche.
 - Si weather indica frio, prioriza sitios acogedores, interiores y ritmos comodos.
@@ -184,6 +203,8 @@ Reglas de adaptacion:
 
 Reglas de realismo y seguridad:
 - No inventes direcciones exactas, telefonos, horarios comerciales ni nombres de negocios concretos si no estas seguro.
+- No inventes numeros de calle, portales o ubicaciones exactas no verificadas.
+- Puedes decir "cerca de ${location}" o "por la zona de ${location}".
 - Puedes usar lugares genericos y verosimiles, por ejemplo "cafeteria especial en Malasana" o "bar tranquilo cerca del centro".
 - Evita actividades peligrosas, ilegales, demasiado caras para el budget o imposibles para el time/distance.
 - Manten estimatedCost, estimatedDuration y estimatedDistance coherentes con budget, time y distance.
@@ -281,6 +302,7 @@ function normalizePlan(aiPlan, planRequest) {
     weather: aiPlan.weather || planRequest.weather,
     groupSize: aiPlan.groupSize || planRequest.groupSize || null,
     source: aiPlan.source === 'ai' ? aiPlan.source : 'ai',
+    requestId: planRequest.requestId || null,
     places: [],
     itinerarySteps,
     whyItFits: normalizeText(
@@ -339,6 +361,13 @@ function normalizeItinerarySteps(value, planRequest, language = 'es') {
     `Sigue con una experiencia ${planRequest.mood} adaptada a ${planRequest.weather}.`,
     `Cierra dentro de ${planRequest.time}, manteniendo distancia ${planRequest.distance}.`,
   ];
+}
+
+function looksLikeStreet(location) {
+  const normalizedLocation = normalizeText(location, '').toLowerCase();
+  return /\b(calle|c\/|avenida|av\.?|paseo|plaza|ronda|camino|carretera|gran via|street|road|avenue|square)\b/.test(
+    normalizedLocation,
+  );
 }
 
 function getOutputLanguageInstruction(language) {

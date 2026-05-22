@@ -99,9 +99,6 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
                         return _SwipeGeneratePage(
                           texts: texts,
                           isLoading: isGeneratingAnother,
-                          onGenerate: isGeneratingAnother
-                              ? null
-                              : () => _generateAnotherPlan(fromSwipe: true),
                         );
                       }
 
@@ -117,6 +114,17 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
                 _PlanPagerIndicator(
                   currentIndex: currentIndex,
                   count: plans.length,
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child:
+                      currentIndex == plans.length - 1 && !isGeneratingAnother
+                      ? const Padding(
+                          key: ValueKey('swipe-discovery-hint'),
+                          padding: EdgeInsets.only(top: 10),
+                          child: _SwipeDiscoveryHint(),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('no-swipe-hint')),
                 ),
                 const SizedBox(height: 12),
                 AnimatedSwitcher(
@@ -146,15 +154,6 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
                 _SecondaryButton(
                   label: texts.editCriteria,
                   onPressed: _editCriteria,
-                ),
-                const SizedBox(height: 12),
-                _SecondaryButton(
-                  label: isGeneratingAnother
-                      ? texts.generatingAnother
-                      : texts.generateAnother,
-                  onPressed: isGeneratingAnother
-                      ? null
-                      : () => _generateAnotherPlan(),
                 ),
               ],
             ),
@@ -462,6 +461,7 @@ class _PlanResultScreenState extends State<PlanResultScreen> {
         location: plan.location,
         weather: plan.weather,
         groupSize: plan.groupSize,
+        avoidSimilarTo: plans.map((savedPlan) => savedPlan.title).toList(),
       );
 
       if (!plans.any((savedPlan) => _isSamePlan(nextPlan, savedPlan))) {
@@ -776,79 +776,160 @@ class _PlanPagerIndicator extends StatelessWidget {
   }
 }
 
+class _SwipeDiscoveryHint extends StatelessWidget {
+  const _SwipeDiscoveryHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 850),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(10 * (1 - value), 0),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.045),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFE8B66B).withValues(alpha: 0.08),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.swipe_left_rounded,
+              color: Color(0xFFE8B66B),
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Desliza para descubrir otro plan',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontWeight: FontWeight.w900,
+                  height: 1.2,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const _HintDots(),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.arrow_forward_rounded,
+              color: Color(0xFFE8B66B),
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HintDots extends StatelessWidget {
+  const _HintDots();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (index) {
+        return Container(
+          width: index == 2 ? 12 : 5,
+          height: 5,
+          margin: EdgeInsets.only(right: index == 2 ? 0 : 4),
+          decoration: BoxDecoration(
+            color: index == 2
+                ? const Color(0xFFE8B66B)
+                : Colors.white.withValues(alpha: 0.24),
+            borderRadius: BorderRadius.circular(5),
+          ),
+        );
+      }),
+    );
+  }
+}
+
 class _SwipeGeneratePage extends StatelessWidget {
-  const _SwipeGeneratePage({
-    required this.texts,
-    required this.isLoading,
-    required this.onGenerate,
-  });
+  const _SwipeGeneratePage({required this.texts, required this.isLoading});
 
   final AppTextValues texts;
   final bool isLoading;
-  final VoidCallback? onGenerate;
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: GlassPanel(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
-        borderRadius: 30,
-        opacity: 0.05,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 62,
-              height: 62,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8B66B).withValues(alpha: 0.13),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: const Color(0xFFE8B66B).withValues(alpha: 0.22),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: GlassPanel(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+          borderRadius: 30,
+          opacity: 0.05,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8B66B).withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFFE8B66B).withValues(alpha: 0.22),
+                  ),
+                ),
+                child: isLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(18),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.6,
+                          color: Color(0xFFE8B66B),
+                        ),
+                      )
+                    : const Icon(
+                        Icons.swipe_left_rounded,
+                        color: Color(0xFFE8B66B),
+                        size: 30,
+                      ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                isLoading ? texts.generatingAnother : texts.generateAnother,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  height: 1.18,
                 ),
               ),
-              child: isLoading
-                  ? const Padding(
-                      padding: EdgeInsets.all(18),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.6,
-                        color: Color(0xFFE8B66B),
-                      ),
-                    )
-                  : const Icon(
-                      Icons.swipe_left_rounded,
-                      color: Color(0xFFE8B66B),
-                      size: 30,
-                    ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              isLoading ? texts.generatingAnother : texts.generateAnother,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                height: 1.18,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Mismos criterios, nueva combinación.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.white.withValues(alpha: 0.58),
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-              ),
-            ),
-            if (!isLoading) ...[
-              const SizedBox(height: 18),
-              _SecondaryButton(
-                label: texts.generatePlan,
-                onPressed: onGenerate,
+              const SizedBox(height: 8),
+              Text(
+                'Mismos criterios, nueva combinación.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.58),
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
               ),
             ],
-          ],
+          ),
         ),
       ),
     );

@@ -20,6 +20,7 @@ class MockPlanGenerator {
     String weather = 'Automático',
     String? groupSize,
     String? reason,
+    String? requestId,
   }) {
     final context = _PlanContext(
       mood: mood,
@@ -69,6 +70,7 @@ class MockPlanGenerator {
       groupSize: TextSanitizer.cleanOptional(context.groupSize),
       source: 'mock',
       reason: TextSanitizer.cleanOptional(reason),
+      requestId: TextSanitizer.cleanOptional(requestId),
       places: places.length >= 3 ? places : const [],
       itinerarySteps: itinerarySteps.map(TextSanitizer.clean).toList(),
       whyItFits: TextSanitizer.clean(

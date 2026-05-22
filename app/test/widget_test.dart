@@ -1200,7 +1200,8 @@ void main() {
     expect((await LocalPlanStorage.getHistory()).first.places.length, 3);
     expect(find.text('Compartir plan'), findsOneWidget);
     expect(find.text('Compartir imagen'), findsOneWidget);
-    expect(find.text('Generar otro'), findsOneWidget);
+    expect(find.text('Generar otro'), findsNothing);
+    expect(find.text('Desliza para descubrir otro plan'), findsOneWidget);
     expect((await LocalPlanStorage.getHistory()).length, 1);
 
     await tester.tap(find.text('Guardar favorito'));
@@ -1212,16 +1213,7 @@ void main() {
 
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Generar otro'));
-    await tester.pump();
-
-    expect(find.text('Generando otro...'), findsOneWidget);
-    expect(
-      find.text('Preparando una nueva opción con la misma vibe...'),
-      findsOneWidget,
-    );
-
-    await tester.pump(const Duration(milliseconds: 900));
+    await tester.drag(find.byType(PageView), const Offset(-700, 0));
     await tester.pumpAndSettle();
 
     expect(find.text('Tu plan está listo'), findsOneWidget);

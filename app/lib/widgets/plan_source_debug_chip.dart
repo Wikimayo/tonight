@@ -16,7 +16,7 @@ class PlanSourceDebugChip extends StatelessWidget {
     final trimmedReason = reason?.trim();
     final hasReason = trimmedReason != null && trimmedReason.isNotEmpty;
     final label = switch (source) {
-      'ai' => 'IA real',
+      'ai' => hasReason ? 'IA real: $trimmedReason' : 'IA real',
       'mock' => hasReason ? 'Mock: $trimmedReason' : 'Mock',
       _ => null,
     };

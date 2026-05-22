@@ -595,7 +595,7 @@ class _LocationSection extends StatelessWidget {
                     ? 'Roma, París, Lisboa, Madrid...'
                     : 'Madrid, Malasaña, Barcelona...',
                 helperText:
-                    'Puedes escribir una zona o usar tu ubicación actual',
+                    'Usaremos esta zona como referencia, no compartimos tu ubicación exacta públicamente.',
                 hintStyle: TextStyle(
                   color: Colors.white.withValues(alpha: 0.38),
                   fontWeight: FontWeight.w500,

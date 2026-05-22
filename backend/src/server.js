@@ -37,6 +37,9 @@ app.post('/generate-plan', async (req, res) => {
     weather,
     groupSize,
     language,
+    requestId,
+    randomSeed,
+    avoidSimilarTo,
   } = req.body;
 
   const missingFields = [
@@ -66,10 +69,15 @@ app.post('/generate-plan', async (req, res) => {
     weather,
     groupSize,
     language: normalizeLanguage(language),
+    requestId: normalizeOptionalString(requestId),
+    randomSeed,
+    avoidSimilarTo: normalizeStringArray(avoidSimilarTo),
   };
 
   if (!process.env.OPENAI_API_KEY) {
-    return res.json(generateMockPlan(planRequest));
+    return res.json(
+      generateMockPlan(planRequest, { reason: 'missing_api_key' }),
+    );
   }
 
   if (!canUseAi()) {
@@ -92,9 +100,10 @@ app.post('/generate-plan', async (req, res) => {
         code: error.code,
       },
     );
+    return res.json(
+      generateMockPlan(planRequest, { reason: fallbackReasonForError(error) }),
+    );
   }
-
-  return res.json(generateMockPlan(planRequest));
 });
 
 app.post('/generate-plan-from-chat', async (req, res) => {
@@ -115,7 +124,7 @@ app.post('/generate-plan-from-chat', async (req, res) => {
 
   if (!process.env.OPENAI_API_KEY) {
     return res.json(
-      generateMockPlan(fallbackRequest, { reason: 'openai_key_missing' }),
+      generateMockPlan(fallbackRequest, { reason: 'missing_api_key' }),
     );
   }
 
@@ -142,9 +151,12 @@ app.post('/generate-plan-from-chat', async (req, res) => {
         code: error.code,
       },
     );
+    return res.json(
+      generateMockPlan(fallbackRequest, {
+        reason: fallbackReasonForError(error),
+      }),
+    );
   }
-
-  return res.json(generateMockPlan(fallbackRequest));
 });
 
 function generateMockPlan(
@@ -158,6 +170,7 @@ function generateMockPlan(
     weather,
     groupSize,
     language = 'es',
+    requestId,
   },
   options = {},
 ) {
@@ -197,6 +210,7 @@ function generateMockPlan(
     groupSize: groupSize || null,
     source: 'mock',
     reason: options.reason || null,
+    requestId: requestId || null,
     places: [
       {
         id: 'mock-place-1',
@@ -265,6 +279,38 @@ function inferPlanRequestFromChatMessage(message) {
 
 function normalizeLanguage(language) {
   return language === 'en' ? 'en' : 'es';
+}
+
+function normalizeOptionalString(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => typeof item === 'string' && item.trim())
+    .map((item) => item.trim())
+    .slice(0, 12);
+}
+
+function fallbackReasonForError(error) {
+  const code = String(error?.code || '').toLowerCase();
+  const name = String(error?.name || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+
+  if (
+    code.includes('timeout') ||
+    name.includes('timeout') ||
+    message.includes('timeout') ||
+    message.includes('timed out')
+  ) {
+    return 'backend_timeout';
+  }
+
+  return 'openai_error';
 }
 
 function localizePlanValue(value, type, language) {

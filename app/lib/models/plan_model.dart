@@ -20,6 +20,7 @@ class PlanModel {
     this.groupSize,
     this.source,
     this.reason,
+    this.requestId,
     this.places = const [],
     required this.itinerarySteps,
     required this.whyItFits,
@@ -43,6 +44,7 @@ class PlanModel {
   final String? groupSize;
   final String? source;
   final String? reason;
+  final String? requestId;
   final List<PlaceModel> places;
   final List<String> itinerarySteps;
   final String whyItFits;
@@ -67,6 +69,7 @@ class PlanModel {
       'groupSize': groupSize,
       'source': source,
       'reason': reason,
+      'requestId': requestId,
       'places': places.map((place) => place.toJson()).toList(),
       'itinerarySteps': itinerarySteps,
       'whyItFits': whyItFits,
@@ -97,6 +100,7 @@ class PlanModel {
       groupSize: TextSanitizer.cleanOptional(json['groupSize']?.toString()),
       source: TextSanitizer.cleanOptional(json['source']?.toString()),
       reason: TextSanitizer.cleanOptional(json['reason']?.toString()),
+      requestId: TextSanitizer.cleanOptional(json['requestId']?.toString()),
       places: (json['places'] as List? ?? [])
           .map((place) => PlaceModel.fromJson(place as Map<String, dynamic>))
           .toList(),

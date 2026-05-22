@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -14,7 +15,49 @@ import 'mock_plan_generator.dart';
 class AiPlanApiService {
   const AiPlanApiService();
 
-  static const Duration requestTimeout = Duration(seconds: 10);
+  static const Duration requestTimeout = Duration(seconds: 25);
+
+  Future<bool> testHealth() async {
+    final healthUrl = Uri.parse('${ApiConfig.baseUrl}/health');
+
+    try {
+      if (kDebugMode) {
+        developer.log('GET $healthUrl', name: 'AiPlanApiService');
+      }
+
+      final response = await http.get(healthUrl).timeout(requestTimeout);
+      if (kDebugMode) {
+        developer.log(
+          'health statusCode=${response.statusCode}',
+          name: 'AiPlanApiService',
+        );
+        if (response.statusCode != 200) {
+          developer.log(
+            'health error body=${response.body}',
+            name: 'AiPlanApiService',
+          );
+        }
+      }
+
+      if (response.statusCode != 200) {
+        return false;
+      }
+
+      final decodedBody = jsonDecode(response.body);
+      return decodedBody is Map<String, dynamic> &&
+          decodedBody['status'] == 'ok';
+    } on Object catch (error, stackTrace) {
+      if (kDebugMode) {
+        developer.log(
+          'Health check failed',
+          name: 'AiPlanApiService',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+      return false;
+    }
+  }
 
   Future<PlanModel> generatePlan({
     required String mood,
@@ -26,6 +69,9 @@ class AiPlanApiService {
     required String weather,
     required String language,
     String? groupSize,
+    required String requestId,
+    required int randomSeed,
+    List<String> avoidSimilarTo = const [],
   }) async {
     final requestBody = <String, dynamic>{
       'mood': mood,
@@ -37,12 +83,25 @@ class AiPlanApiService {
       'weather': weather,
       'groupSize': groupSize,
       'language': language,
+      'requestId': requestId,
+      'randomSeed': randomSeed,
+      'avoidSimilarTo': avoidSimilarTo,
     };
 
+    final generatePlanUrl = Uri.parse('${ApiConfig.baseUrl}/generate-plan');
+
     try {
+      if (kDebugMode) {
+        developer.log('POST $generatePlanUrl', name: 'AiPlanApiService');
+        developer.log(
+          'request body keys=${requestBody.keys.join(', ')}',
+          name: 'AiPlanApiService',
+        );
+      }
+
       final response = await http
           .post(
-            Uri.parse('${ApiConfig.baseUrl}/generate-plan'),
+            generatePlanUrl,
             headers: const {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
@@ -51,24 +110,22 @@ class AiPlanApiService {
           )
           .timeout(requestTimeout);
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return _fallbackPlan(
-          reason: 'Backend returned ${response.statusCode}: ${response.body}',
-          mood: mood,
-          budget: budget,
-          time: time,
-          distance: distance,
-          moment: moment,
-          location: location,
-          weather: weather,
-          groupSize: groupSize,
+      if (kDebugMode) {
+        developer.log(
+          'statusCode=${response.statusCode}',
+          name: 'AiPlanApiService',
         );
       }
 
-      final decodedBody = jsonDecode(response.body);
-      if (decodedBody is! Map<String, dynamic>) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (kDebugMode) {
+          developer.log(
+            'error body=${response.body}',
+            name: 'AiPlanApiService',
+          );
+        }
         return _fallbackPlan(
-          reason: 'Backend response is not a JSON object',
+          reason: 'non_200_status',
           mood: mood,
           budget: budget,
           time: time,
@@ -77,6 +134,42 @@ class AiPlanApiService {
           location: location,
           weather: weather,
           groupSize: groupSize,
+          requestId: requestId,
+        );
+      }
+
+      final Object? decodedBody;
+      try {
+        decodedBody = jsonDecode(response.body);
+      } on FormatException catch (error, stackTrace) {
+        return _fallbackPlan(
+          reason: 'invalid_json',
+          error: error,
+          stackTrace: stackTrace,
+          mood: mood,
+          budget: budget,
+          time: time,
+          distance: distance,
+          moment: moment,
+          location: location,
+          weather: weather,
+          groupSize: groupSize,
+          requestId: requestId,
+        );
+      }
+
+      if (decodedBody is! Map<String, dynamic>) {
+        return _fallbackPlan(
+          reason: 'invalid_json',
+          mood: mood,
+          budget: budget,
+          time: time,
+          distance: distance,
+          moment: moment,
+          location: location,
+          weather: weather,
+          groupSize: groupSize,
+          requestId: requestId,
         );
       }
 
@@ -86,10 +179,36 @@ class AiPlanApiService {
       );
       planBody['source'] ??= decodedBody['source'] ?? 'ai';
       planBody['reason'] ??= decodedBody['reason'];
-      return PlanModel.fromJson(planBody);
-    } catch (error, stackTrace) {
+      planBody['requestId'] ??= decodedBody['requestId'] ?? requestId;
+      if (kDebugMode && planBody['source'] == 'mock') {
+        developer.log(
+          'Backend returned mock fallback'
+          '${planBody['reason'] == null ? '' : ' reason=${planBody['reason']}'}'
+          ' requestId=${planBody['requestId']}',
+          name: 'AiPlanApiService',
+        );
+      }
+      try {
+        return PlanModel.fromJson(planBody);
+      } on Object catch (error, stackTrace) {
+        return _fallbackPlan(
+          reason: 'invalid_json',
+          error: error,
+          stackTrace: stackTrace,
+          mood: mood,
+          budget: budget,
+          time: time,
+          distance: distance,
+          moment: moment,
+          location: location,
+          weather: weather,
+          groupSize: groupSize,
+          requestId: requestId,
+        );
+      }
+    } on TimeoutException catch (error, stackTrace) {
       return _fallbackPlan(
-        reason: 'Backend call failed',
+        reason: 'timeout',
         error: error,
         stackTrace: stackTrace,
         mood: mood,
@@ -100,6 +219,37 @@ class AiPlanApiService {
         location: location,
         weather: weather,
         groupSize: groupSize,
+        requestId: requestId,
+      );
+    } on http.ClientException catch (error, stackTrace) {
+      return _fallbackPlan(
+        reason: 'network_error',
+        error: error,
+        stackTrace: stackTrace,
+        mood: mood,
+        budget: budget,
+        time: time,
+        distance: distance,
+        moment: moment,
+        location: location,
+        weather: weather,
+        groupSize: groupSize,
+        requestId: requestId,
+      );
+    } catch (error, stackTrace) {
+      return _fallbackPlan(
+        reason: _reasonForUnexpectedError(error),
+        error: error,
+        stackTrace: stackTrace,
+        mood: mood,
+        budget: budget,
+        time: time,
+        distance: distance,
+        moment: moment,
+        location: location,
+        weather: weather,
+        groupSize: groupSize,
+        requestId: requestId,
       );
     }
   }
@@ -114,6 +264,7 @@ class AiPlanApiService {
     required String location,
     required String weather,
     String? groupSize,
+    String? requestId,
     Object? error,
     StackTrace? stackTrace,
   }) {
@@ -136,6 +287,20 @@ class AiPlanApiService {
       weather: weather,
       groupSize: groupSize,
       reason: reason,
+      requestId: requestId,
     );
+  }
+
+  String _reasonForUnexpectedError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('socketexception') ||
+        message.contains('failed host lookup') ||
+        message.contains('connection refused') ||
+        message.contains('network') ||
+        message.contains('xmlhttprequest')) {
+      return 'network_error';
+    }
+
+    return 'backend_call_failed';
   }
 }
